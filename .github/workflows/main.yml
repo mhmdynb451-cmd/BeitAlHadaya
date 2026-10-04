@@ -54,6 +54,29 @@ jobs:
           }
           EOF
 
+      - name: Fix MainActivity Kotlin errors
+        working-directory: project/beit_v03
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/src/main/java/com/beitalhadaya/app/MainActivity.kt")
+          text = path.read_text(encoding="utf-8")
+
+          if "import androidx.compose.ui.platform.LocalLayoutDirection" not in text:
+              text = text.replace(
+                  "import androidx.compose.ui.unit.LayoutDirection",
+                  "import androidx.compose.ui.platform.LocalLayoutDirection\nimport androidx.compose.ui.unit.LayoutDirection"
+              )
+
+          text = text.replace(
+              "enabled = name.isNotBlank() && phone.isNotBlank() && city.isNotBlank() && details.isNotBlank(), Modifier.fillMaxWidth())",
+              "enabled = name.isNotBlank() && phone.isNotBlank() && city.isNotBlank() && details.isNotBlank(), modifier = Modifier.fillMaxWidth())"
+          )
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
       - name: Build APK
         working-directory: project/beit_v03
         run: gradle assembleDebug --no-daemon --stacktrace
