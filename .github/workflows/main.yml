@@ -31,6 +31,12 @@ jobs:
           mkdir -p project
           unzip -q BeitAlHadaya_Android_v0.3_GitHubBuild.zip -d project
 
+      - name: Enable AndroidX
+        working-directory: project/beit_v03
+        run: |
+          echo 'android.useAndroidX=true' >> gradle.properties
+          echo 'android.enableJetifier=true' >> gradle.properties
+
       - name: Build APK
         working-directory: project/beit_v03
         run: gradle assembleDebug --no-daemon --stacktrace
