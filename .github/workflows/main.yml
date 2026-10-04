@@ -37,6 +37,23 @@ jobs:
           echo 'android.useAndroidX=true' >> gradle.properties
           echo 'android.enableJetifier=true' >> gradle.properties
 
+      - name: Fix JVM targets
+        working-directory: project/beit_v03
+        run: |
+          cat >> app/build.gradle.kts <<'EOF'
+
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+
+          kotlin {
+              jvmToolchain(17)
+          }
+          EOF
+
       - name: Build APK
         working-directory: project/beit_v03
         run: gradle assembleDebug --no-daemon --stacktrace
