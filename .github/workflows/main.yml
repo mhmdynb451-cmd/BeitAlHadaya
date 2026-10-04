@@ -566,7 +566,3 @@ jobs:
           grep -q "شنطة يد نسائية" app/src/main/java/com/beitalhadaya/app/MainActivity.kt
           grep -q "علبة مجوهرات" app/src/main/java/com/beitalhadaya/app/MainActivity.kt
           grep -q "عطر نسائي" app/src/main/java/com/beitalhadaya/app/MainActivity.kt
-
-      - name: Check for experimental TopAppBar
-        working-directory: project/beit_v03
-        run: |
