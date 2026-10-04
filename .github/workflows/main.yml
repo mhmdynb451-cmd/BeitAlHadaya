@@ -45,4 +45,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BeitAlHadaya-debug-apk
-          path: project/app/build/outputs/apk/debug/app-debug.apk
+          path: project/beit_v03/app/build/outputs/apk/debug/app-debug.apk
