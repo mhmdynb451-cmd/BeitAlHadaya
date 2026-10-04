@@ -33,7 +33,7 @@ jobs:
 
       - name: Build APK
         run: |
-          cd project
+              cd project/beit_v03
           if [ -f gradlew ]; then
             chmod +x gradlew
             ./gradlew assembleDebug --no-daemon --stacktrace
