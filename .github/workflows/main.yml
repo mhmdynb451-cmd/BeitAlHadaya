@@ -74,6 +74,12 @@ jobs:
               "enabled = name.isNotBlank() && phone.isNotBlank() && city.isNotBlank() && details.isNotBlank(), modifier = Modifier.fillMaxWidth())"
           )
 
+          if "@OptIn(ExperimentalMaterial3Api::class)" not in text:
+              text = text.replace(
+                  "@Composable\nfun StoreApp()",
+                  "@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nfun StoreApp()"
+              )
+
           path.write_text(text, encoding="utf-8")
           PY
 
