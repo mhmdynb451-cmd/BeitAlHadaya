@@ -1,10 +1,10 @@
-
 name: Build Android APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
@@ -28,21 +28,16 @@ jobs:
       - name: Unpack Android project
         run: |
           rm -rf project
-          mkdir project
+          mkdir -p project
           unzip -q BeitAlHadaya_Android_v0.3_GitHubBuild.zip -d project
 
       - name: Build APK
-        run: |
-              cd project/beit_v03
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          else
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
+        working-directory: project/beit_v03
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: BeitAlHadaya-debug-apk
           path: project/beit_v03/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
