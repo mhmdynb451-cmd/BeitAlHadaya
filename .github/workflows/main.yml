@@ -66,7 +66,8 @@ jobs:
           if "import androidx.compose.ui.platform.LocalLayoutDirection" not in text:
               text = text.replace(
                   "import androidx.compose.ui.unit.LayoutDirection",
-                  "import androidx.compose.ui.platform.LocalLayoutDirection\nimport androidx.compose.ui.unit.LayoutDirection"
+                  "import androidx.compose.ui.platform.LocalLayoutDirection\n"
+                  "import androidx.compose.ui.unit.LayoutDirection"
               )
 
           text = text.replace(
@@ -77,7 +78,9 @@ jobs:
           if "@OptIn(ExperimentalMaterial3Api::class)" not in text:
               text = text.replace(
                   "@Composable\nfun StoreApp()",
-                  "@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nfun StoreApp()"
+                  "@OptIn(ExperimentalMaterial3Api::class)\n"
+                  "@Composable\n"
+                  "fun StoreApp()"
               )
 
           path.write_text(text, encoding="utf-8")
