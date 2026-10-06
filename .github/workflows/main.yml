@@ -131,48 +131,46 @@ jobs:
 
           private val products = listOf(
               Product(
-                  name = "طقم حلل جرانيت",
-                  price = 2850,
-                  category = "مستلزمات المطبخ",
-                  description = "طقم عالي الجودة مقاوم للالتصاق وسهل التنظيف، 7 قطع بمقاسات مختلفة."
+                  "طقم حلل جرانيت",
+                  2850,
+                  "مستلزمات المطبخ",
+                  "طقم عالي الجودة مقاوم للالتصاق وسهل التنظيف، 7 قطع بمقاسات مختلفة."
               ),
               Product(
-                  name = "طقم عناية بالبشرة",
-                  price = 1250,
-                  category = "أدوات التجميل والعناية",
-                  description = "مجموعة عناية بالبشرة مناسبة للاستخدام اليومي."
+                  "طقم عناية بالبشرة",
+                  1250,
+                  "أدوات التجميل والعناية",
+                  "مجموعة عناية بالبشرة مناسبة للاستخدام اليومي."
               ),
               Product(
-                  name = "ساعة يد أنيقة",
-                  price = 1200,
-                  category = "الهدايا والإكسسوارات",
-                  description = "ساعة يد بتصميم أنيق ومميز، مناسبة لجميع المناسبات."
+                  "ساعة يد أنيقة",
+                  1200,
+                  "الهدايا والإكسسوارات",
+                  "ساعة يد بتصميم أنيق ومميز، مناسبة لجميع المناسبات."
               ),
               Product(
-                  name = "شنطة يد نسائية",
-                  price = 950,
-                  category = "ملابس حريمي",
-                  description = "شنطة يد نسائية أنيقة للاستخدام اليومي والمناسبات."
+                  "شنطة يد نسائية",
+                  950,
+                  "ملابس حريمي",
+                  "شنطة يد نسائية أنيقة للاستخدام اليومي والمناسبات."
               ),
               Product(
-                  name = "علبة مجوهرات",
-                  price = 680,
-                  category = "الهدايا والإكسسوارات",
-                  description = "علبة أنيقة لحفظ المجوهرات والإكسسوارات وترتيبها."
+                  "علبة مجوهرات",
+                  680,
+                  "الهدايا والإكسسوارات",
+                  "علبة أنيقة لحفظ المجوهرات والإكسسوارات وترتيبها."
               ),
               Product(
-                  name = "عطر نسائي",
-                  price = 1450,
-                  category = "أدوات التجميل والعناية",
-                  description = "عطر نسائي برائحة مميزة مناسب للمناسبات والاستخدام اليومي."
+                  "عطر نسائي",
+                  1450,
+                  "أدوات التجميل والعناية",
+                  "عطر نسائي برائحة مميزة مناسب للمناسبات والاستخدام اليومي."
               )
           )
 
           class MainActivity : ComponentActivity() {
-
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-
                   setContent {
                       StoreApp()
                   }
@@ -181,22 +179,10 @@ jobs:
 
           @Composable
           fun StoreApp() {
-
-              var selectedCategory by remember {
-                  mutableStateOf<String?>(null)
-              }
-
-              var selectedProduct by remember {
-                  mutableStateOf<Product?>(null)
-              }
-
-              var cart by remember {
-                  mutableStateOf(listOf<Product>())
-              }
-
-              var favorites by remember {
-                  mutableStateOf(setOf<String>())
-              }
+              var selectedCategory by remember { mutableStateOf<String?>(null) }
+              var selectedProduct by remember { mutableStateOf<Product?>(null) }
+              var cart by remember { mutableStateOf(listOf<Product>()) }
+              var favorites by remember { mutableStateOf(setOf<String>()) }
 
               val navy = Color(0xFF102A43)
               val gold = Color(0xFFF2C94C)
@@ -207,24 +193,17 @@ jobs:
                       secondary = gold
                   )
               ) {
-
                   Scaffold(
                       topBar = {
-
                           Column(
                               modifier = Modifier
                                   .fillMaxWidth()
-                                  .padding(
-                                      horizontal = 16.dp,
-                                      vertical = 10.dp
-                                  )
+                                  .padding(horizontal = 16.dp, vertical = 10.dp)
                           ) {
-
                               Text(
                                   text = "بيت الهدايا غاوي خسارة",
                                   fontWeight = FontWeight.Bold
                               )
-
                               Text(
                                   text = "لتجهيزات العروسة",
                                   style = MaterialTheme.typography.labelMedium
@@ -232,24 +211,14 @@ jobs:
                           }
                       }
                   ) { padding ->
-
                       when {
-
                           selectedProduct != null -> {
-
                               ProductDetailsScreen(
                                   product = selectedProduct!!,
-                                  isFavorite = favorites.contains(
-                                      selectedProduct!!.name
-                                  ),
-                                  onBack = {
-                                      selectedProduct = null
-                                  },
+                                  isFavorite = favorites.contains(selectedProduct!!.name),
+                                  onBack = { selectedProduct = null },
                                   onFavorite = {
-
-                                      val name =
-                                          selectedProduct!!.name
-
+                                      val name = selectedProduct!!.name
                                       favorites =
                                           if (favorites.contains(name)) {
                                               favorites - name
@@ -258,10 +227,7 @@ jobs:
                                           }
                                   },
                                   onAddToCart = {
-
-                                      cart =
-                                          cart + selectedProduct!!
-
+                                      cart = cart + selectedProduct!!
                                       selectedProduct = null
                                   },
                                   modifier = Modifier.padding(padding)
@@ -269,33 +235,22 @@ jobs:
                           }
 
                           selectedCategory != null -> {
-
-                              val categoryProducts =
-                                  products.filter {
-                                      it.category == selectedCategory
-                                  }
-
                               CategoryScreen(
                                   category = selectedCategory!!,
-                                  products = categoryProducts,
-                                  onBack = {
-                                      selectedCategory = null
+                                  products = products.filter {
+                                      it.category == selectedCategory
                                   },
-                                  onProduct = {
-                                      selectedProduct = it
-                                  },
+                                  onBack = { selectedCategory = null },
+                                  onProduct = { selectedProduct = it },
                                   modifier = Modifier.padding(padding)
                               )
                           }
 
                           else -> {
-
                               HomeScreen(
                                   categories = categories,
                                   cartCount = cart.size,
-                                  onCategory = {
-                                      selectedCategory = it
-                                  },
+                                  onCategory = { selectedCategory = it },
                                   modifier = Modifier.padding(padding)
                               )
                           }
@@ -311,52 +266,40 @@ jobs:
               onCategory: (String) -> Unit,
               modifier: Modifier = Modifier
           ) {
-
               LazyColumn(
                   modifier = modifier
                       .fillMaxSize()
                       .padding(16.dp),
                   verticalArrangement = Arrangement.spacedBy(10.dp)
               ) {
-
                   item {
-
                       Text(
                           text = "أهلاً بك في بيت الهدايا",
                           style = MaterialTheme.typography.headlineSmall,
                           fontWeight = FontWeight.Bold
                       )
 
-                      Spacer(
-                          modifier = Modifier.height(4.dp)
-                      )
+                      Spacer(modifier = Modifier.height(4.dp))
 
                       Text(
                           text = "لتجهيزات العروسة وكل احتياجات البيت"
                       )
 
-                      Spacer(
-                          modifier = Modifier.height(8.dp)
-                      )
+                      Spacer(modifier = Modifier.height(8.dp))
                   }
 
                   items(categories) { category ->
-
                       Card(
                           modifier = Modifier
                               .fillMaxWidth()
-                              .clickable {
-                                  onCategory(category)
-                              }
+                              .clickable { onCategory(category) }
                       ) {
-
                           Row(
                               modifier = Modifier
                                   .fillMaxWidth()
                                   .padding(18.dp),
                               verticalAlignment = Alignment.CenterVertically
                           ) {
-
                               Text(
                                   text = category,
                                   modifier = Modifier.weight(1f),
@@ -372,10 +315,7 @@ jobs:
                   }
 
                   item {
-
-                      Spacer(
-                          modifier = Modifier.height(8.dp)
-                      )
+                      Spacer(modifier = Modifier.height(8.dp))
 
                       Text(
                           text = "عدد المنتجات في السلة: $cartCount"
@@ -392,24 +332,14 @@ jobs:
               onProduct: (Product) -> Unit,
               modifier: Modifier = Modifier
           ) {
-
-              Column(
-                  modifier = modifier.fillMaxSize()
-              ) {
-
+              Column(modifier = modifier.fillMaxSize()) {
                   Row(
                       modifier = Modifier
                           .fillMaxWidth()
-                          .padding(
-                              horizontal = 16.dp,
-                              vertical = 10.dp
-                          ),
+                          .padding(horizontal = 16.dp, vertical = 10.dp),
                       verticalAlignment = Alignment.CenterVertically
                   ) {
-
-                      TextButton(
-                          onClick = onBack
-                      ) {
+                      TextButton(onClick = onBack) {
                           Text("رجوع")
                       }
 
@@ -421,48 +351,34 @@ jobs:
                   }
 
                   if (products.isEmpty()) {
-
                       Box(
                           modifier = Modifier.fillMaxSize(),
                           contentAlignment = Alignment.Center
                       ) {
-
-                          Text(
-                              text = "لا توجد منتجات مضافة لهذا القسم حتى الآن."
-                          )
+                          Text("لا توجد منتجات مضافة لهذا القسم حتى الآن.")
                       }
-
                   } else {
-
                       LazyColumn(
                           modifier = Modifier
                               .fillMaxSize()
                               .padding(horizontal = 16.dp),
                           verticalArrangement = Arrangement.spacedBy(10.dp)
                       ) {
-
                           items(products) { product ->
-
                               Card(
                                   modifier = Modifier
                                       .fillMaxWidth()
-                                      .clickable {
-                                          onProduct(product)
-                                      }
+                                      .clickable { onProduct(product) }
                               ) {
-
                                   Column(
                                       modifier = Modifier.padding(16.dp)
                                   ) {
-
                                       Text(
                                           text = product.name,
                                           fontWeight = FontWeight.Bold
                                       )
 
-                                      Spacer(
-                                          modifier = Modifier.height(4.dp)
-                                      )
+                                      Spacer(modifier = Modifier.height(4.dp))
 
                                       Text(
                                           text = "${product.price} ج.م",
@@ -470,13 +386,9 @@ jobs:
                                           fontWeight = FontWeight.Bold
                                       )
 
-                                      Spacer(
-                                          modifier = Modifier.height(4.dp)
-                                      )
+                                      Spacer(modifier = Modifier.height(4.dp))
 
-                                      Text(
-                                          text = product.description
-                                      )
+                                      Text(text = product.description)
                                   }
                               }
                           }
@@ -494,17 +406,13 @@ jobs:
               onAddToCart: () -> Unit,
               modifier: Modifier = Modifier
           ) {
-
               Column(
                   modifier = modifier
                       .fillMaxSize()
                       .padding(20.dp),
                   verticalArrangement = Arrangement.spacedBy(12.dp)
               ) {
-
-                  TextButton(
-                      onClick = onBack
-                  ) {
+                  TextButton(onClick = onBack) {
                       Text("رجوع")
                   }
 
@@ -521,26 +429,19 @@ jobs:
                       fontWeight = FontWeight.Bold
                   )
 
-                  Text(
-                      text = product.description
-                  )
+                  Text(text = product.description)
 
-                  Text(
-                      text = "القسم: ${product.category}"
-                  )
+                  Text(text = "القسم: ${product.category}")
 
                   OutlinedButton(
                       onClick = onFavorite,
                       modifier = Modifier.fillMaxWidth()
                   ) {
-
                       Text(
-                          text =
-                              if (isFavorite) {
-                                  "إزالة من المفضلة"
-                              } else {
-                                  "إضافة إلى المفضلة"
-                              }
+                          if (isFavorite)
+                              "إزالة من المفضلة"
+                          else
+                              "إضافة إلى المفضلة"
                       )
                   }
 
@@ -548,7 +449,6 @@ jobs:
                       onClick = onAddToCart,
                       modifier = Modifier.fillMaxWidth()
                   ) {
-
                       Text("أضف إلى السلة")
                   }
               }
@@ -570,4 +470,17 @@ jobs:
       - name: Build Debug APK
         working-directory: project/beit_v03
         run: |
-          ./grad
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Verify APK
+        working-directory: project/beit_v03
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeitAlHadaya-debug-apk
+          path: project/beit_v03/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
