@@ -226,4 +226,5 @@ jobs:
         with:
           name: beit-alhadaya-app
           path: project/beit_v03/app/build/outputs/apk/debug/*.apk
+
           
