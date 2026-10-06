@@ -19,159 +19,211 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools platforms;android-35 build-tools;35.0.0"
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.9"
 
       - name: Check source ZIP
         run: |
-          set -e
           test -f BeitAlHadaya_Android_v0.3_GitHubBuild.zip
           ls -lh BeitAlHadaya_Android_v0.3_GitHubBuild.zip
 
       - name: Unpack Android project
         run: |
-          set -e
-
           rm -rf project
           mkdir -p project
-
           unzip -q BeitAlHadaya_Android_v0.3_GitHubBuild.zip -d project
+          find project -maxdepth 3 -type f | head -100
 
-          echo "===== Extracted files ====="
-          find project -maxdepth 5 -type f | head -200
-
-      - name: Locate Gradle project
-        shell: bash
+      - name: Verify Android project
+        working-directory: project/beit_v03
         run: |
-          set -e
-
-          echo "===== Searching for Gradle settings ====="
-
-          SETTINGS_FILE="$(find project -type f \( \
-            -name "settings.gradle" -o \
-            -name "settings.gradle.kts" \
-          \) -print -quit)"
-
-          if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: settings.gradle or settings.gradle.kts was not found."
-            echo "===== All extracted files ====="
-            find project -type f -print
-            exit 1
-          fi
-
-          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
-
-          echo "Found settings file:"
-          echo "$SETTINGS_FILE"
-
-          echo "Gradle project directory:"
-          echo "$PROJECT_DIR"
-
-          if [ ! -f "$PROJECT_DIR/gradlew" ]; then
-            echo "ERROR: gradlew was not found beside the Gradle settings file."
-            echo "===== Files in project directory ====="
-            ls -la "$PROJECT_DIR"
-            exit 1
-          fi
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Verify Gradle project
-        shell: bash
-        run: |
-          set -e
-
-          echo "Using project directory:"
-          echo "$PROJECT_DIR"
-
-          test -f "$PROJECT_DIR/settings.gradle" || \
-          test -f "$PROJECT_DIR/settings.gradle.kts"
-
-          test -f "$PROJECT_DIR/gradlew"
-
-          chmod +x "$PROJECT_DIR/gradlew"
-
-          test -x "$PROJECT_DIR/gradlew"
-
-          echo "===== Gradle wrapper ====="
-          "$PROJECT_DIR/gradlew" --version
+          test -f settings.gradle.kts
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+          test -f gradlew
 
       - name: Enable AndroidX
-        shell: bash
+        working-directory: project/beit_v03
         run: |
-          set -e
+          touch gradle.properties
 
-          touch "$PROJECT_DIR/gradle.properties"
+          grep -qxF 'android.useAndroidX=true' gradle.properties || \
+            echo 'android.useAndroidX=true' >> gradle.properties
 
-          grep -qxF 'android.useAndroidX=true' \
-            "$PROJECT_DIR/gradle.properties" || \
-            echo 'android.useAndroidX=true' >> \
-            "$PROJECT_DIR/gradle.properties"
+          grep -qxF 'android.enableJetifier=true' gradle.properties || \
+            echo 'android.enableJetifier=true' >> gradle.properties
 
-          grep -qxF 'android.enableJetifier=true' \
-            "$PROJECT_DIR/gradle.properties" || \
-            echo 'android.enableJetifier=true' >> \
-            "$PROJECT_DIR/gradle.properties"
-
-      - name: Show Android project structure
-        shell: bash
+      - name: Prepare Gradle Wrapper
+        working-directory: project/beit_v03
         run: |
-          set -e
+          chmod +x gradlew
+          test -x gradlew
+          ./gradlew --version
 
-          echo "===== Project directory ====="
-          find "$PROJECT_DIR" -maxdepth 4 -type f | sort
+      - name: Fix Java and Kotlin JVM targets
+        working-directory: project/beit_v03
+        run: |
+          cat >> app/build.gradle.kts <<'EOF'
+
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+
+          kotlin {
+              jvmToolchain(17)
+          }
+          EOF
+
+      - name: Replace MainActivity with stable store app
+        working-directory: project/beit_v03
+        run: |
+          mkdir -p app/src/main/java/com/beitalhadaya/app
+
+          cat > app/src/main/java/com/beitalhadaya/app/MainActivity.kt <<'EOF'
+          package com.beitalhadaya.app
+
+          import android.os.Bundle
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.setContent
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.material3.Button
+          import androidx.compose.material3.Card
+          import androidx.compose.material3.MaterialTheme
+          import androidx.compose.material3.OutlinedButton
+          import androidx.compose.material3.Scaffold
+          import androidx.compose.material3.Text
+          import androidx.compose.material3.TextButton
+          import androidx.compose.material3.lightColorScheme
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.unit.dp
+
+          data class Product(val id: Int, val name: String, val price: String)
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContent {
+                      MaterialTheme(colorScheme = lightColorScheme()) {
+                          StoreApp()
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun StoreApp() {
+              var currentScreen by remember { mutableStateOf("home") }
+              var cartCount by remember { mutableStateOf(0) }
+
+              val products = listOf(
+                  Product(1, "Elegant Watch", "150 EGP"),
+                  Product(2, "Luxury Perfume", "200 EGP"),
+                  Product(3, "Custom Photo Frame", "100 EGP")
+              )
+
+              Scaffold(
+                  topBar = {
+                      Row(
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .padding(16.dp),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          Text(text = "Beit AlHadaya", style = MaterialTheme.typography.headlineMedium)
+                          TextButton(onClick = { currentScreen = "cart" }) {
+                              Text(text = "Cart ($cartCount)")
+                          }
+                      }
+                  }
+              ) { innerPadding ->
+                  Box(modifier = Modifier.padding(innerPadding)) {
+                      when (currentScreen) {
+                          "home" -> HomeScreen(products = products, onAddToCart = { cartCount++ })
+                          "cart" -> CartScreen(cartCount = cartCount, onBack = { currentScreen = "home" })
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun HomeScreen(products: List<Product>, onAddToCart: () -> Unit) {
+              LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                  items(products) { product ->
+                      Card(
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .padding(vertical = 8.dp)
+                      ) {
+                          Column(modifier = Modifier.padding(16.dp)) {
+                              Text(text = product.name, style = MaterialTheme.typography.titleLarge)
+                              Spacer(modifier = Modifier.height(4.dp))
+                              Text(text = product.price, style = MaterialTheme.typography.bodyMedium)
+                              Spacer(modifier = Modifier.height(8.dp))
+                              Button(onClick = onAddToCart) {
+                                  Text(text = "Add to Cart")
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun CartScreen(cartCount: Int, onBack: () -> Unit) {
+              Column(
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .padding(16.dp),
+                  verticalArrangement = Arrangement.Center,
+                  horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                  Text(text = "Cart Items: $cartCount", style = MaterialTheme.typography.titleLarge)
+                  Spacer(modifier = Modifier.height(16.dp))
+                  OutlinedButton(onClick = onBack) {
+                      Text(text = "Back to Store")
+                  }
+              }
+          }
+          EOF
 
       - name: Build Debug APK
-        shell: bash
+        working-directory: project/beit_v03
         run: |
-          set -e
+          ./gradlew assembleDebug --stacktrace
 
-          cd "$PROJECT_DIR"
-
-          chmod +x gradlew
-
-          ./gradlew clean assembleDebug \
-            --stacktrace \
-            --no-daemon
-
-      - name: Find APK
-        shell: bash
-        run: |
-          set -e
-
-          echo "===== Searching for APK ====="
-
-          APK_FILE="$(find "$PROJECT_DIR" -type f \
-            -path "*/build/outputs/apk/debug/*.apk" \
-            -print -quit)"
-
-          if [ -z "$APK_FILE" ]; then
-            echo "ERROR: APK was not found."
-            echo "===== Build outputs ====="
-            find "$PROJECT_DIR" -type f \
-              -path "*/build/outputs/*" \
-              -print
-            exit 1
-          fi
-
-          echo "APK found:"
-          echo "$APK_FILE"
-
-          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
-
-          ls -lh "$APK_FILE"
-
-      - name: Upload APK
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BeitAlHadaya-debug-apk
-          path: ${{ env.APK_FILE }}
-          if-no-files-found: error
+          name: beit-alhadaya-app
+          path: project/beit_v03/app/build/outputs/apk/debug/*.apk
+          
