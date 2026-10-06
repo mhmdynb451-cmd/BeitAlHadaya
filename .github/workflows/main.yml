@@ -19,17 +19,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools platforms;android-35 build-tools;35.0.0"
-
-      - name: Setup Gradle 8.9
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: "8.9"
 
       - name: Check source ZIP
         run: |
@@ -97,7 +91,6 @@ jobs:
           import android.os.Bundle
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.setContent
-          import androidx.compose.foundation.clickable
           import androidx.compose.foundation.layout.Arrangement
           import androidx.compose.foundation.layout.Box
           import androidx.compose.foundation.layout.Column
@@ -126,13 +119,21 @@ jobs:
           import androidx.compose.ui.Modifier
           import androidx.compose.ui.unit.dp
 
-          data class Product(val id: Int, val name: String, val price: String)
+          data class Product(
+              val id: Int,
+              val name: String,
+              val price: String
+          )
 
           class MainActivity : ComponentActivity() {
+
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+
                   setContent {
-                      MaterialTheme(colorScheme = lightColorScheme()) {
+                      MaterialTheme(
+                          colorScheme = lightColorScheme()
+                      ) {
                           StoreApp()
                       }
                   }
@@ -141,56 +142,153 @@ jobs:
 
           @Composable
           fun StoreApp() {
-              var currentScreen by remember { mutableStateOf("home") }
-              var cartCount by remember { mutableStateOf(0) }
+
+              var currentScreen by remember {
+                  mutableStateOf("home")
+              }
+
+              var cartCount by remember {
+                  mutableStateOf(0)
+              }
 
               val products = listOf(
-                  Product(1, "Elegant Watch", "150 EGP"),
-                  Product(2, "Luxury Perfume", "200 EGP"),
-                  Product(3, "Custom Photo Frame", "100 EGP")
+                  Product(
+                      1,
+                      "Elegant Watch",
+                      "150 EGP"
+                  ),
+                  Product(
+                      2,
+                      "Luxury Perfume",
+                      "200 EGP"
+                  ),
+                  Product(
+                      3,
+                      "Custom Photo Frame",
+                      "100 EGP"
+                  )
               )
 
               Scaffold(
                   topBar = {
+
                       Row(
                           modifier = Modifier
                               .fillMaxWidth()
                               .padding(16.dp),
-                          horizontalArrangement = Arrangement.SpaceBetween,
-                          verticalAlignment = Alignment.CenterVertically
+
+                          horizontalArrangement =
+                              Arrangement.SpaceBetween,
+
+                          verticalAlignment =
+                              Alignment.CenterVertically
                       ) {
-                          Text(text = "Beit AlHadaya", style = MaterialTheme.typography.headlineMedium)
-                          TextButton(onClick = { currentScreen = "cart" }) {
-                              Text(text = "Cart ($cartCount)")
+
+                          Text(
+                              text = "Beit AlHadaya",
+                              style =
+                                  MaterialTheme.typography.headlineMedium
+                          )
+
+                          TextButton(
+                              onClick = {
+                                  currentScreen = "cart"
+                              }
+                          ) {
+
+                              Text(
+                                  text = "Cart ($cartCount)"
+                              )
                           }
                       }
                   }
               ) { innerPadding ->
-                  Box(modifier = Modifier.padding(innerPadding)) {
+
+                  Box(
+                      modifier =
+                          Modifier.padding(innerPadding)
+                  ) {
+
                       when (currentScreen) {
-                          "home" -> HomeScreen(products = products, onAddToCart = { cartCount++ })
-                          "cart" -> CartScreen(cartCount = cartCount, onBack = { currentScreen = "home" })
+
+                          "home" -> {
+
+                              HomeScreen(
+                                  products = products,
+                                  onAddToCart = {
+                                      cartCount++
+                                  }
+                              )
+                          }
+
+                          "cart" -> {
+
+                              CartScreen(
+                                  cartCount = cartCount,
+                                  onBack = {
+                                      currentScreen = "home"
+                                  }
+                              )
+                          }
                       }
                   }
               }
           }
 
           @Composable
-          fun HomeScreen(products: List<Product>, onAddToCart: () -> Unit) {
-              LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+          fun HomeScreen(
+              products: List<Product>,
+              onAddToCart: () -> Unit
+          ) {
+
+              LazyColumn(
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .padding(16.dp)
+              ) {
+
                   items(products) { product ->
+
                       Card(
                           modifier = Modifier
                               .fillMaxWidth()
                               .padding(vertical = 8.dp)
                       ) {
-                          Column(modifier = Modifier.padding(16.dp)) {
-                              Text(text = product.name, style = MaterialTheme.typography.titleLarge)
-                              Spacer(modifier = Modifier.height(4.dp))
-                              Text(text = product.price, style = MaterialTheme.typography.bodyMedium)
-                              Spacer(modifier = Modifier.height(8.dp))
-                              Button(onClick = onAddToCart) {
-                                  Text(text = "Add to Cart")
+
+                          Column(
+                              modifier = Modifier
+                                  .padding(16.dp)
+                          ) {
+
+                              Text(
+                                  text = product.name,
+                                  style =
+                                      MaterialTheme.typography.titleLarge
+                              )
+
+                              Spacer(
+                                  modifier =
+                                      Modifier.height(4.dp)
+                              )
+
+                              Text(
+                                  text = product.price,
+                                  style =
+                                      MaterialTheme.typography.bodyMedium
+                              )
+
+                              Spacer(
+                                  modifier =
+                                      Modifier.height(8.dp)
+                              )
+
+                              Button(
+                                  onClick = onAddToCart
+                              ) {
+
+                                  Text(
+                                      text = "Add to Cart"
+                                  )
                               }
                           }
                       }
@@ -199,18 +297,41 @@ jobs:
           }
 
           @Composable
-          fun CartScreen(cartCount: Int, onBack: () -> Unit) {
+          fun CartScreen(
+              cartCount: Int,
+              onBack: () -> Unit
+          ) {
+
               Column(
                   modifier = Modifier
                       .fillMaxSize()
                       .padding(16.dp),
-                  verticalArrangement = Arrangement.Center,
-                  horizontalAlignment = Alignment.CenterHorizontally
+
+                  verticalArrangement =
+                      Arrangement.Center,
+
+                  horizontalAlignment =
+                      Alignment.CenterHorizontally
               ) {
-                  Text(text = "Cart Items: $cartCount", style = MaterialTheme.typography.titleLarge)
-                  Spacer(modifier = Modifier.height(16.dp))
-                  OutlinedButton(onClick = onBack) {
-                      Text(text = "Back to Store")
+
+                  Text(
+                      text = "Cart Items: $cartCount",
+                      style =
+                          MaterialTheme.typography.titleLarge
+                  )
+
+                  Spacer(
+                      modifier =
+                          Modifier.height(16.dp)
+                  )
+
+                  OutlinedButton(
+                      onClick = onBack
+                  ) {
+
+                      Text(
+                          text = "Back to Store"
+                      )
                   }
               }
           }
@@ -221,10 +342,15 @@ jobs:
         run: |
           ./gradlew assembleDebug --stacktrace
 
+      - name: Verify APK
+        working-directory: project/beit_v03
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: beit-alhadaya-app
           path: project/beit_v03/app/build/outputs/apk/debug/*.apk
-
-          
+          if-no-files-found: error
