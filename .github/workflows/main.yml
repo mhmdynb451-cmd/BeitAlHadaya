@@ -63,6 +63,61 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
+      - name: Fix Kotlin compilerOptions
+        run: |
+          set -e
+
+          APP_GRADLE=$(find "$PROJECT_DIR" -type f -path "*/app/build.gradle.kts" -print -quit)
+
+          if [ -z "$APP_GRADLE" ]; then
+            echo "ERROR: app/build.gradle.kts was not found."
+            exit 1
+          fi
+
+          echo "Fixing Kotlin compilerOptions in:"
+          echo "$APP_GRADLE"
+
+          python3 - "$APP_GRADLE" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          text = path.read_text()
+
+          old_pattern = r'''
+          \s*kotlinOptions\s*\{\s*
+              jvmTarget\s*=\s*["']17["']\s*
+          \}
+          '''
+
+          text, count = re.subn(
+              old_pattern,
+              "",
+              text,
+              flags=re.VERBOSE
+          )
+
+          if "import org.jetbrains.kotlin.gradle.dsl.JvmTarget" not in text:
+              text = "import org.jetbrains.kotlin.gradle.dsl.JvmTarget\n\n" + text
+
+          modern_block = """
+          kotlin {
+              compilerOptions {
+                  jvmTarget.set(JvmTarget.JVM_17)
+              }
+          }
+          """
+
+          if "jvmTarget.set(JvmTarget.JVM_17)" not in text:
+              text = text.rstrip() + "\n\n" + modern_block.strip() + "\n"
+
+          path.write_text(text)
+
+          print(f"Old jvmTarget blocks removed: {count}")
+          print("Modern Kotlin compilerOptions configured successfully.")
+          PY
+
       - name: Verify Android project
         run: |
           set -e
