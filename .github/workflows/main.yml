@@ -6,41 +6,117 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build Debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Get repository
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
-      - name: Install Java 17
-        uses: actions/setup-java@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
-      - name: Install Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.9"
 
       - name: Unpack Android project
+        shell: bash
         run: |
+          set -euo pipefail
+
           rm -rf project
           mkdir -p project
-          unzip -q BeitAlHadaya_Android_v0.3_GitHubBuild.zip -d project
+
+          if [ -f "BeitAlHadaya_v1.2.1_GitHubBuild.zip" ]; then
+            SOURCE_ZIP="BeitAlHadaya_v1.2.1_GitHubBuild.zip"
+          elif [ -f "BeitAlHadaya_Android_v0.3_GitHubBuild.zip" ]; then
+            SOURCE_ZIP="BeitAlHadaya_Android_v0.3_GitHubBuild.zip"
+          else
+            echo "ERROR: No Android project ZIP file was found."
+            exit 1
+          fi
+
+          echo "Using source package: $SOURCE_ZIP"
+          unzip -q "$SOURCE_ZIP" -d project
+
+          SETTINGS_FILE="$(
+            find project \
+              -type f \
+              -name "settings.gradle.kts" \
+              -print \
+              -quit
+          )"
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERROR: settings.gradle.kts was not found inside the ZIP."
+            echo "Extracted files:"
+            find project -maxdepth 5 -type f | sort
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "ERROR: app/build.gradle.kts was not found."
+            echo "Project directory detected: $PROJECT_DIR"
+            find "$PROJECT_DIR" -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Android project detected at:"
+          echo "$PROJECT_DIR"
 
       - name: Enable AndroidX
-        working-directory: project/beit_v03
+        shell: bash
         run: |
-          echo 'android.useAndroidX=true' >> gradle.properties
-          echo 'android.enableJetifier=true' >> gradle.properties
+          set -euo pipefail
 
-      - name: Fix JVM targets
-        working-directory: project/beit_v03
+          GRADLE_PROPERTIES="$PROJECT_DIR/gradle.properties"
+          touch "$GRADLE_PROPERTIES"
+
+          if ! grep -qxF "android.useAndroidX=true" "$GRADLE_PROPERTIES"; then
+            echo "android.useAndroidX=true" >> "$GRADLE_PROPERTIES"
+          fi
+
+          if ! grep -qxF "android.enableJetifier=true" "$GRADLE_PROPERTIES"; then
+            echo "android.enableJetifier=true" >> "$GRADLE_PROPERTIES"
+          fi
+
+      - name: Configure Java and Kotlin JVM 17
+        shell: bash
         run: |
-          cat >> app/build.gradle.kts <<'EOF'
+          set -euo pipefail
+
+          APP_GRADLE="$PROJECT_DIR/app/build.gradle.kts"
+
+          python3 - "$APP_GRADLE" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
+
+          if "sourceCompatibility = JavaVersion.VERSION_17" not in text:
+              text += """
 
           android {
               compileOptions {
@@ -48,57 +124,144 @@ jobs:
                   targetCompatibility = JavaVersion.VERSION_17
               }
           }
+          """
+
+          if "jvmToolchain(17)" not in text:
+              text += """
 
           kotlin {
               jvmToolchain(17)
           }
-          EOF
+          """
 
-      - name: Fix MainActivity Kotlin errors
-        working-directory: project/beit_v03
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Apply safe MainActivity fixes
+        shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
+          set -euo pipefail
 
-          path = Path("app/src/main/java/com/beitalhadaya/app/MainActivity.kt")
+          MAIN_ACTIVITY="$(
+            find "$PROJECT_DIR/app/src/main/java" \
+              -type f \
+              -name "MainActivity.kt" \
+              -print \
+              -quit
+          )"
+
+          if [ -z "$MAIN_ACTIVITY" ]; then
+            echo "WARNING: MainActivity.kt was not found."
+            echo "Continuing without MainActivity patching."
+            exit 0
+          fi
+
+          echo "MainActivity detected at:"
+          echo "$MAIN_ACTIVITY"
+
+          python3 - "$MAIN_ACTIVITY" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path(sys.argv[1])
           text = path.read_text(encoding="utf-8")
 
-          if "import androidx.compose.ui.platform.LocalLayoutDirection" not in text:
+          # Fix missing LocalLayoutDirection import when LayoutDirection is used.
+          if (
+              "LocalLayoutDirection" not in text
+              and "import androidx.compose.ui.unit.LayoutDirection" in text
+          ):
               text = text.replace(
                   "import androidx.compose.ui.unit.LayoutDirection",
                   "import androidx.compose.ui.platform.LocalLayoutDirection\n"
-                  "import androidx.compose.ui.unit.LayoutDirection"
+                  "import androidx.compose.ui.unit.LayoutDirection",
+                  1,
               )
 
-          text = text.replace(
-              "enabled = name.isNotBlank() && phone.isNotBlank() && city.isNotBlank() && details.isNotBlank(), Modifier.fillMaxWidth())",
-              "enabled = name.isNotBlank() && phone.isNotBlank() && city.isNotBlank() && details.isNotBlank(), modifier = Modifier.fillMaxWidth())"
+          # Fix named parameter usage for Modifier where the old form exists.
+          text = re.sub(
+              r'enabled\s*=\s*([^,\n]+),\s*Modifier\.fillMaxWidth\(\)\)',
+              r'enabled = \1, modifier = Modifier.fillMaxWidth())',
+              text,
           )
 
-          if "@OptIn(ExperimentalMaterial3Api::class)" not in text:
+          # Protect StoreApp from ExperimentalMaterial3Api warnings/errors.
+          if (
+              "ExperimentalMaterial3Api" in text
+              and "@OptIn(ExperimentalMaterial3Api::class)" not in text
+              and "fun StoreApp()" in text
+          ):
               text = text.replace(
-                  "@Composable\nfun StoreApp()",
+                  "fun StoreApp()",
                   "@OptIn(ExperimentalMaterial3Api::class)\n"
-                  "@Composable\n"
-                  "fun StoreApp()"
+                  "fun StoreApp()",
+                  1,
               )
 
           path.write_text(text, encoding="utf-8")
           PY
 
-      - name: Build APK
-        working-directory: project/beit_v03
-        run: gradle assembleDebug --no-daemon --stacktrace
-
-      - name: Verify APK
-        working-directory: project/beit_v03
+      - name: Verify Gradle project
+        shell: bash
         run: |
-          test -f app/build/outputs/apk/debug/app-debug.apk
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          set -euo pipefail
+
+          test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+
+          echo "Gradle project verification: OK"
+          echo "Project directory: $PROJECT_DIR"
+
+      - name: Build Debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$PROJECT_DIR"
+
+          if [ -x "./gradlew" ]; then
+            echo "Using Gradle Wrapper."
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            echo "Gradle Wrapper not found."
+            echo "Using configured Gradle installation."
+            gradle assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: Find and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK_PATH="$(
+            find "$PROJECT_DIR" \
+              -type f \
+              -path "*/build/outputs/apk/debug/*.apk" \
+              -print \
+              -quit
+          )"
+
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: Debug APK was not generated."
+            echo "Available build outputs:"
+            find "$PROJECT_DIR" \
+              -type f \
+              -path "*/build/outputs/*" \
+              -print | sort || true
+            exit 1
+          fi
+
+          echo "APK found:"
+          echo "$APK_PATH"
+
+          ls -lh "$APK_PATH"
+
+          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BeitAlHadaya-debug-apk
-          path: project/beit_v03/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.APK_PATH }}
           if-no-files-found: error
