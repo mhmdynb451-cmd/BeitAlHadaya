@@ -52,7 +52,7 @@ jobs:
           if [ -z "$SETTINGS_FILE" ]; then
             echo "ERROR: settings.gradle.kts was not found inside the ZIP."
             echo "Extracted files:"
-            find project -maxdepth 6 -type f | sort
+            find project -maxdepth 8 -type f | sort
             exit 1
           fi
 
@@ -61,14 +61,14 @@ jobs:
           if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
             echo "ERROR: app/build.gradle.kts was not found."
             echo "Project directory detected: $PROJECT_DIR"
-            find "$PROJECT_DIR" -maxdepth 5 -type f | sort
+            find "$PROJECT_DIR" -maxdepth 6 -type f | sort
             exit 1
           fi
 
           if [ ! -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml" ]; then
             echo "ERROR: AndroidManifest.xml was not found."
             echo "Project directory detected: $PROJECT_DIR"
-            find "$PROJECT_DIR/app" -maxdepth 6 -type f | sort
+            find "$PROJECT_DIR/app" -maxdepth 8 -type f | sort
             exit 1
           fi
 
@@ -77,7 +77,7 @@ jobs:
           echo "Android project detected at:"
           echo "$PROJECT_DIR"
 
-          echo "Gradle files detected:"
+          echo "Gradle-related files detected:"
           find "$PROJECT_DIR" \
             -type f \
             \( \
@@ -87,6 +87,80 @@ jobs:
               -o -name "gradle-wrapper.properties" \
             \) \
             -print | sort
+
+      - name: Force Gradle Wrapper 8.13
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          WRAPPER_FILE="$(
+            find "$PROJECT_DIR" \
+              -type f \
+              -path "*/gradle/wrapper/gradle-wrapper.properties" \
+              -print \
+              -quit
+          )"
+
+          if [ -z "$WRAPPER_FILE" ]; then
+            echo "ERROR: gradle-wrapper.properties was not found."
+            echo "Searching entire project:"
+            find "$PROJECT_DIR" \
+              -type f \
+              -path "*/gradle/*" \
+              -print | sort
+            exit 1
+          fi
+
+          echo "Gradle Wrapper file:"
+          echo "$WRAPPER_FILE"
+
+          python3 - "$WRAPPER_FILE" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          lines = path.read_text(encoding="utf-8").splitlines()
+
+          output = []
+          found_distribution = False
+
+          for line in lines:
+              if line.startswith("distributionUrl="):
+                  output.append(
+                      r"distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip"
+                  )
+                  found_distribution = True
+              elif line.startswith("distributionSha256Sum="):
+                  continue
+              else:
+                  output.append(line)
+
+          if not found_distribution:
+              output.append(
+                  r"distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip"
+              )
+
+          path.write_text(
+              "\n".join(output) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          echo "Updated Gradle Wrapper configuration:"
+          grep -n "distributionUrl" "$WRAPPER_FILE"
+
+          GRADLE_WRAPPER="$(dirname "$WRAPPER_FILE")/../.."
+          GRADLEW="$PROJECT_DIR/gradlew"
+
+          if [ -f "$GRADLEW" ]; then
+            chmod +x "$GRADLEW"
+            echo "Gradle Wrapper executable:"
+            ls -l "$GRADLEW"
+          else
+            echo "ERROR: gradlew was not found at:"
+            echo "$GRADLEW"
+            exit 1
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -104,10 +178,39 @@ jobs:
         with:
           packages: "platform-tools platforms;android-35 build-tools;35.0.0"
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.13"
+
+      - name: Verify Gradle 8.13
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$PROJECT_DIR"
+
+          echo "Configured system Gradle:"
+          gradle --version
+
+          echo
+          echo "Gradle Wrapper version:"
+          ./gradlew --version
+
+          WRAPPER_VERSION="$(
+            ./gradlew --version \
+              | awk '/^Gradle / {print $2; exit}'
+          )"
+
+          echo
+          echo "Detected Wrapper Gradle version: $WRAPPER_VERSION"
+
+          if [ "$WRAPPER_VERSION" != "8.13" ]; then
+            echo "ERROR: Gradle Wrapper is not using 8.13."
+            exit 1
+          fi
+
+          echo "Gradle 8.13 verification: OK"
 
       - name: Enable AndroidX
         shell: bash
@@ -197,7 +300,6 @@ jobs:
           path = Path(sys.argv[1])
           text = path.read_text(encoding="utf-8")
 
-          # Add LocalLayoutDirection import only when it is actually used.
           uses_local_layout_direction = bool(
               re.search(r"\bLocalLayoutDirection\b", text)
           )
@@ -242,14 +344,12 @@ jobs:
                           + text[insert_at:]
                       )
 
-          # Fix the known named-parameter form when it exists.
           text = re.sub(
               r'enabled\s*=\s*([^,\n]+),\s*Modifier\.fillMaxWidth\(\)\)',
               r'enabled = \1, modifier = Modifier.fillMaxWidth())',
               text,
           )
 
-          # Protect StoreApp from ExperimentalMaterial3Api warnings/errors.
           if (
               "ExperimentalMaterial3Api" in text
               and "@OptIn(ExperimentalMaterial3Api::class)" not in text
@@ -275,6 +375,7 @@ jobs:
           test -f "$PROJECT_DIR/settings.gradle.kts"
           test -f "$PROJECT_DIR/app/build.gradle.kts"
           test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$PROJECT_DIR/gradlew"
 
           echo "Gradle project verification: OK"
           echo "Project directory: $PROJECT_DIR"
@@ -286,14 +387,15 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          if [ -x "./gradlew" ]; then
-            echo "Using Gradle Wrapper."
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          else
-            echo "Gradle Wrapper not found."
-            echo "Using configured Gradle installation."
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
+          echo "Final Gradle version used for APK build:"
+          ./gradlew --version
+
+          echo
+          echo "Starting assembleDebug..."
+
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Find and verify APK
         shell: bash
@@ -331,4 +433,3 @@ jobs:
           name: BeitAlHadaya-debug-apk
           path: ${{ env.APK_PATH }}
           if-no-files-found: error
-          
