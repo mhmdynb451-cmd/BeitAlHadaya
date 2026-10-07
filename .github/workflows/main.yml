@@ -26,7 +26,7 @@ jobs:
           if [ -f "BeitAlHadaya_v1.2.1_GitHubBuild.zip" ]; then
             ZIP_FILE="BeitAlHadaya_v1.2.1_GitHubBuild.zip"
           else
-            ZIP_FILE="$(find . -maxdepth 2 -type f -name 'BeitAlHadaya*_GitHubBuild.zip' | head -n 1 || true)"
+            ZIP_FILE="$(find . -maxdepth 3 -type f -name 'BeitAlHadaya*_GitHubBuild.zip' | head -n 1 || true)"
           fi
 
           if [ -z "$ZIP_FILE" ]; then
@@ -57,7 +57,7 @@ jobs:
             echo "ERROR: settings.gradle.kts was not found."
             echo
             echo "Project files detected:"
-            find project -maxdepth 5 -type f | sort | head -n 300
+            find project -maxdepth 6 -type f | sort | head -n 300
             exit 1
           fi
 
@@ -79,7 +79,9 @@ jobs:
 
           echo "Important Gradle files:"
           find "$PROJECT_DIR" -type f \
-            \( -name 'settings.gradle.kts' -o -name 'build.gradle.kts' -o -name 'gradle.properties' \) \
+            \( -name 'settings.gradle.kts' \
+            -o -name 'build.gradle.kts' \
+            -o -name 'gradle.properties' \) \
             -print | sort
 
       - name: Set up Java 17
@@ -115,16 +117,16 @@ jobs:
 
           touch "$PROPERTIES_FILE"
 
-          if ! grep -q '^android.useAndroidX=' "$PROPERTIES_FILE"; then
-            echo 'android.useAndroidX=true' >> "$PROPERTIES_FILE"
-          else
+          if grep -q '^android.useAndroidX=' "$PROPERTIES_FILE"; then
             sed -i 's/^android.useAndroidX=.*/android.useAndroidX=true/' "$PROPERTIES_FILE"
+          else
+            echo 'android.useAndroidX=true' >> "$PROPERTIES_FILE"
           fi
 
-          if ! grep -q '^android.enableJetifier=' "$PROPERTIES_FILE"; then
-            echo 'android.enableJetifier=true' >> "$PROPERTIES_FILE"
-          else
+          if grep -q '^android.enableJetifier=' "$PROPERTIES_FILE"; then
             sed -i 's/^android.enableJetifier=.*/android.enableJetifier=true/' "$PROPERTIES_FILE"
+          else
+            echo 'android.enableJetifier=true' >> "$PROPERTIES_FILE"
           fi
 
           echo "AndroidX settings:"
@@ -154,7 +156,7 @@ jobs:
 
           for candidate in candidates:
               text = candidate.read_text(encoding="utf-8")
-              if "kotlinOptions" in text or "com.android.application" in text:
+              if "com.android.application" in text or "kotlinOptions" in text:
                   build_file = candidate
                   break
 
@@ -163,9 +165,9 @@ jobs:
 
           text = build_file.read_text(encoding="utf-8")
 
-          print(f"Target Kotlin Gradle file: {build_file}")
+          print(f"Target Gradle file: {build_file}")
 
-          def find_matching_brace(source: str, opening_index: int) -> int:
+          def find_matching_brace(source, opening_index):
               depth = 0
               in_string = False
               in_line_comment = False
@@ -180,10 +182,12 @@ jobs:
                   if in_line_comment:
                       if ch == "\n":
                           in_line_comment = False
+
                   elif in_block_comment:
                       if ch == "*" and nxt == "/":
                           in_block_comment = False
                           i += 1
+
                   elif in_string:
                       if escape:
                           escape = False
@@ -191,6 +195,7 @@ jobs:
                           escape = True
                       elif ch == '"':
                           in_string = False
+
                   else:
                       if ch == "/" and nxt == "/":
                           in_line_comment = True
@@ -211,56 +216,67 @@ jobs:
 
               raise RuntimeError("Could not find matching closing brace.")
 
-          # Remove legacy kotlinOptions only if it is inside the android { ... } block.
+          # Find android block.
           android_match = None
-
           search_from = 0
+
           while True:
               idx = text.find("android", search_from)
+
               if idx == -1:
                   break
 
               brace = text.find("{", idx)
+
               if brace == -1:
                   break
 
-              end = find_matching_brace(text, brace)
+              try:
+                  end = find_matching_brace(text, brace)
+              except RuntimeError:
+                  search_from = idx + len("android")
+                  continue
 
-              if text[brace:end + 1].startswith("{"):
-                  android_match = (idx, brace, end)
-                  break
-
-              search_from = idx + len("android")
+              android_match = (idx, brace, end)
+              break
 
           if android_match is None:
-              print("WARNING: android { ... } block was not found.")
+              print("ERROR: android { ... } block was not found.")
+              sys.exit(1)
+
+          _, android_brace, android_end = android_match
+
+          android_block = text[android_brace:android_end + 1]
+
+          # Remove old kotlinOptions block.
+          kotlin_index = android_block.find("kotlinOptions")
+
+          if kotlin_index != -1:
+              absolute_index = android_brace + kotlin_index
+              kotlin_brace = text.find("{", absolute_index)
+
+              if kotlin_brace == -1:
+                  print("ERROR: kotlinOptions opening brace was not found.")
+                  sys.exit(1)
+
+              kotlin_end = find_matching_brace(text, kotlin_brace)
+
+              line_start = text.rfind("\n", 0, absolute_index) + 1
+
+              text = text[:line_start] + text[kotlin_end + 1:]
+
+              print("Removed legacy kotlinOptions block.")
           else:
-              _, android_brace, android_end = android_match
-              android_block = text[android_brace:android_end + 1]
+              print("No legacy kotlinOptions block found.")
 
-              kotlin_index = android_block.find("kotlinOptions")
+          # Remove any previous generated top-level kotlin compiler block.
+          # Then add one clean block.
+          import_line = "import org.jetbrains.kotlin.gradle.dsl.JvmTarget"
 
-              if kotlin_index != -1:
-                  absolute_index = android_brace + kotlin_index
-                  kotlin_brace = text.find("{", absolute_index)
+          if import_line not in text:
+              text = import_line + "\n\n" + text
 
-                  if kotlin_brace == -1:
-                      print("ERROR: kotlinOptions opening brace was not found.")
-                      sys.exit(1)
-
-                  kotlin_end = find_matching_brace(text, kotlin_brace)
-
-                  line_start = text.rfind("\n", 0, absolute_index) + 1
-
-                  text = text[:line_start] + text[kotlin_end + 1:]
-
-                  print("Removed legacy android.kotlinOptions block.")
-              else:
-                  print("No legacy android.kotlinOptions block found.")
-
-          # Add the correct Kotlin compilerOptions block at top level.
-          compiler_block = """\
-          kotlin {
+          compiler_block = """kotlin {
               compilerOptions {
                   jvmTarget = JvmTarget.JVM_17
               }
@@ -272,14 +288,8 @@ jobs:
               android_position = text.find("android {")
 
               if android_position == -1:
-                  print("ERROR: android { block not found while inserting compilerOptions.")
+                  print("ERROR: android block not found.")
                   sys.exit(1)
-
-              if "import org.jetbrains.kotlin.gradle.dsl.JvmTarget" not in text:
-                  text = (
-                      "import org.jetbrains.kotlin.gradle.dsl.JvmTarget\n\n"
-                      + text
-                  )
 
               text = (
                   text[:android_position]
@@ -287,23 +297,18 @@ jobs:
                   + text[android_position:]
               )
 
-              print("Added top-level kotlin { compilerOptions { ... } } block.")
+              print("Added Kotlin JVM 17 compiler options.")
           else:
-              print("Correct Kotlin compilerOptions block already exists.")
+              print("Kotlin JVM 17 compiler options already exist.")
 
-          # Add Java 17 compile options inside android if they are missing.
+          # Add Java 17 compile options inside android block.
           if "compileOptions {" not in text:
               android_position = text.find("android {")
-
-              if android_position == -1:
-                  print("ERROR: android { block not found while adding compileOptions.")
-                  sys.exit(1)
 
               android_open = text.find("{", android_position)
               android_end = find_matching_brace(text, android_open)
 
-              compile_block = """\
-          
+              compile_block = """
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
                   targetCompatibility = JavaVersion.VERSION_17
@@ -313,7 +318,11 @@ jobs:
 
               insert_at = android_open + 1
 
-              text = text[:insert_at] + compile_block + text[insert_at:]
+              text = (
+                  text[:insert_at]
+                  + compile_block
+                  + text[insert_at:]
+              )
 
               print("Added Java 17 compileOptions.")
           else:
@@ -324,22 +333,26 @@ jobs:
               print("ERROR: Legacy kotlinOptions still exists.")
               sys.exit(1)
 
-          if "import org.jetbrains.kotlin.gradle.dsl.JvmTarget" not in text:
+          if import_line not in text:
               print("ERROR: JvmTarget import is missing.")
               sys.exit(1)
 
           if "kotlin {" not in text:
-              print("ERROR: Top-level kotlin block is missing.")
+              print("ERROR: Kotlin compiler block is missing.")
               sys.exit(1)
 
           if "jvmTarget = JvmTarget.JVM_17" not in text:
-              print("ERROR: JVM 17 compiler target is missing.")
+              print("ERROR: JVM 17 target is missing.")
+              sys.exit(1)
+
+          if "compileOptions {" not in text:
+              print("ERROR: Java compileOptions block is missing.")
               sys.exit(1)
 
           build_file.write_text(text, encoding="utf-8")
 
           print()
-          print("Kotlin migration completed successfully.")
+          print("Kotlin/Java migration completed successfully.")
           print("Final validation passed.")
           PY
 
@@ -354,9 +367,11 @@ jobs:
             APP_BUILD_FILE="$(find "$PROJECT_DIR" -type f -name 'build.gradle.kts' | head -n 1)"
           fi
 
-          echo "Final Gradle file: $APP_BUILD_FILE"
+          echo "Final Gradle file:"
+          echo "$APP_BUILD_FILE"
           echo
-          sed -n '1,220p' "$APP_BUILD_FILE"
+
+          sed -n '1,240p' "$APP_BUILD_FILE"
 
       - name: Validate Gradle project
         shell: bash
@@ -388,13 +403,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          APK_FILE="$(find "$PROJECT_DIR" -type f -path '*/build/outputs/apk/debug/*.apk' | head -n 1 || true)"
+          APK_FILE="$(find "$PROJECT_DIR" \
+            -type f \
+            -path '*/build/outputs/apk/debug/*.apk' \
+            | head -n 1 || true)"
 
           if [ -z "$APK_FILE" ]; then
             echo "ERROR: Debug APK was not found."
             echo
             echo "Available APK files:"
-            find "$PROJECT_DIR" -type f -name '*.apk' -print | sort || true
+            find "$PROJECT_DIR" \
+              -type f \
+              -name '*.apk' \
+              -print \
+              | sort || true
             exit 1
           fi
 
@@ -403,7 +425,8 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/artifacts"
 
-          cp "$APK_FILE" "$GITHUB_WORKSPACE/artifacts/BeitAlHadaya-debug.apk"
+          cp "$APK_FILE" \
+            "$GITHUB_WORKSPACE/artifacts/BeitAlHadaya-debug.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
