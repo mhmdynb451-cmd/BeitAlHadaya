@@ -80,87 +80,13 @@ jobs:
           echo "Gradle-related files detected:"
           find "$PROJECT_DIR" \
             -type f \
-            \( \
+            \
               -name "settings.gradle.kts" \
               -o -name "build.gradle.kts" \
               -o -name "gradle.properties" \
               -o -name "gradle-wrapper.properties" \
-            \) \
+            \
             -print | sort
-
-      - name: Force Gradle Wrapper 8.13
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          WRAPPER_FILE="$(
-            find "$PROJECT_DIR" \
-              -type f \
-              -path "*/gradle/wrapper/gradle-wrapper.properties" \
-              -print \
-              -quit
-          )"
-
-          if [ -z "$WRAPPER_FILE" ]; then
-            echo "ERROR: gradle-wrapper.properties was not found."
-            echo "Searching entire project:"
-            find "$PROJECT_DIR" \
-              -type f \
-              -path "*/gradle/*" \
-              -print | sort
-            exit 1
-          fi
-
-          echo "Gradle Wrapper file:"
-          echo "$WRAPPER_FILE"
-
-          python3 - "$WRAPPER_FILE" <<'PY'
-          from pathlib import Path
-          import sys
-
-          path = Path(sys.argv[1])
-          lines = path.read_text(encoding="utf-8").splitlines()
-
-          output = []
-          found_distribution = False
-
-          for line in lines:
-              if line.startswith("distributionUrl="):
-                  output.append(
-                      r"distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip"
-                  )
-                  found_distribution = True
-              elif line.startswith("distributionSha256Sum="):
-                  continue
-              else:
-                  output.append(line)
-
-          if not found_distribution:
-              output.append(
-                  r"distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip"
-              )
-
-          path.write_text(
-              "\n".join(output) + "\n",
-              encoding="utf-8",
-          )
-          PY
-
-          echo "Updated Gradle Wrapper configuration:"
-          grep -n "distributionUrl" "$WRAPPER_FILE"
-
-          GRADLE_WRAPPER="$(dirname "$WRAPPER_FILE")/../.."
-          GRADLEW="$PROJECT_DIR/gradlew"
-
-          if [ -f "$GRADLEW" ]; then
-            chmod +x "$GRADLEW"
-            echo "Gradle Wrapper executable:"
-            ls -l "$GRADLEW"
-          else
-            echo "ERROR: gradlew was not found at:"
-            echo "$GRADLEW"
-            exit 1
-          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -171,12 +97,22 @@ jobs:
           cache-dependency-path: |
             project/**/*.gradle*
             project/**/gradle.properties
-            project/**/gradle-wrapper.properties
+            project/**/settings.gradle.kts
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-        with:
-          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          yes | sdkmanager --licenses >/dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v6
@@ -188,25 +124,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          cd "$PROJECT_DIR"
-
           echo "Configured system Gradle:"
           gradle --version
 
-          echo
-          echo "Gradle Wrapper version:"
-          ./gradlew --version
-
-          WRAPPER_VERSION="$(
-            ./gradlew --version \
+          GRADLE_VERSION="$(
+            gradle --version \
               | awk '/^Gradle / {print $2; exit}'
           )"
 
-          echo
-          echo "Detected Wrapper Gradle version: $WRAPPER_VERSION"
+          echo "Detected Gradle version: $GRADLE_VERSION"
 
-          if [ "$WRAPPER_VERSION" != "8.13" ]; then
-            echo "ERROR: Gradle Wrapper is not using 8.13."
+          if [ "$GRADLE_VERSION" != "8.13" ]; then
+            echo "ERROR: Gradle 8.13 is required."
             exit 1
           fi
 
@@ -276,7 +205,7 @@ jobs:
           set -euo pipefail
 
           MAIN_ACTIVITY="$(
-            find "$PROJECT_DIR/app/src/main/java" \
+            find "$PROJECT_DIR/app/src/main" \
               -type f \
               -name "MainActivity.kt" \
               -print \
@@ -284,152 +213,5 @@ jobs:
           )"
 
           if [ -z "$MAIN_ACTIVITY" ]; then
-            echo "WARNING: MainActivity.kt was not found under app/src/main/java."
-            echo "Continuing without MainActivity patching."
-            exit 0
-          fi
-
-          echo "MainActivity detected at:"
-          echo "$MAIN_ACTIVITY"
-
-          python3 - "$MAIN_ACTIVITY" <<'PY'
-          from pathlib import Path
-          import re
-          import sys
-
-          path = Path(sys.argv[1])
-          text = path.read_text(encoding="utf-8")
-
-          uses_local_layout_direction = bool(
-              re.search(r"\bLocalLayoutDirection\b", text)
-          )
-
-          has_local_layout_import = bool(
-              re.search(
-                  r"^\s*import\s+androidx\.compose\.ui\.platform\.LocalLayoutDirection\s*$",
-                  text,
-                  re.MULTILINE,
-              )
-          )
-
-          if uses_local_layout_direction and not has_local_layout_import:
-              import_matches = list(
-                  re.finditer(r"^import .*$", text, re.MULTILINE)
-              )
-
-              import_line = (
-                  "import androidx.compose.ui.platform.LocalLayoutDirection\n"
-              )
-
-              if import_matches:
-                  insert_at = import_matches[-1].end() + 1
-                  text = (
-                      text[:insert_at]
-                      + import_line
-                      + text[insert_at:]
-                  )
-              else:
-                  package_match = re.search(
-                      r"^package .*$",
-                      text,
-                      re.MULTILINE,
-                  )
-
-                  if package_match:
-                      insert_at = package_match.end() + 1
-                      text = (
-                          text[:insert_at]
-                          + "\n"
-                          + import_line
-                          + text[insert_at:]
-                      )
-
-          text = re.sub(
-              r'enabled\s*=\s*([^,\n]+),\s*Modifier\.fillMaxWidth\(\)\)',
-              r'enabled = \1, modifier = Modifier.fillMaxWidth())',
-              text,
-          )
-
-          if (
-              "ExperimentalMaterial3Api" in text
-              and "@OptIn(ExperimentalMaterial3Api::class)" not in text
-              and "fun StoreApp()" in text
-          ):
-              text = text.replace(
-                  "fun StoreApp()",
-                  "@OptIn(ExperimentalMaterial3Api::class)\n"
-                  "fun StoreApp()",
-                  1,
-              )
-
-          path.write_text(text, encoding="utf-8")
-          PY
-
-          echo "MainActivity safe fixes checked."
-
-      - name: Verify Gradle project
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          test -f "$PROJECT_DIR/settings.gradle.kts"
-          test -f "$PROJECT_DIR/app/build.gradle.kts"
-          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
-          test -f "$PROJECT_DIR/gradlew"
-
-          echo "Gradle project verification: OK"
-          echo "Project directory: $PROJECT_DIR"
-
-      - name: Build Debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cd "$PROJECT_DIR"
-
-          echo "Final Gradle version used for APK build:"
-          ./gradlew --version
-
-          echo
-          echo "Starting assembleDebug..."
-
-          ./gradlew assembleDebug \
-            --no-daemon \
-            --stacktrace
-
-      - name: Find and verify APK
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APK_PATH="$(
-            find "$PROJECT_DIR" \
-              -type f \
-              -path "*/build/outputs/apk/debug/*.apk" \
-              -print \
-              -quit
-          )"
-
-          if [ -z "$APK_PATH" ]; then
-            echo "ERROR: Debug APK was not generated."
-            echo "Available build outputs:"
-            find "$PROJECT_DIR" \
-              -type f \
-              -path "*/build/outputs/*" \
-              -print | sort || true
-            exit 1
-          fi
-
-          echo "APK found:"
-          echo "$APK_PATH"
-
-          ls -lh "$APK_PATH"
-
-          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: BeitAlHadaya-debug-apk
-          path: ${{ env.APK_PATH }}
-          if-no-files-found: error
+            echo "WARNING: MainActivity.kt was not found."
+           
