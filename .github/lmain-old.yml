@@ -1,0 +1,194 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build BeitAlHadaya V1.2.1 Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install and verify Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-36.1" "build-tools;36.1.0"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          [[ -n "$SDK_ROOT" ]] || { echo "ERROR: Android SDK root was not detected."; exit 1; }
+          test -d "$SDK_ROOT/platforms/android-36.1"
+          test -d "$SDK_ROOT/build-tools/36.1.0"
+          echo "Verified Android SDK packages successfully."
+
+      - name: Setup Gradle 8.13
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.13'
+          dependency-graph: disabled
+
+      - name: Prepare Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP_FILE="BeitAlHadaya_v1.2.1_GitHubBuild.zip"
+          if [[ ! -f "$ZIP_FILE" ]]; then
+            echo "ERROR: Source ZIP not found: $ZIP_FILE"
+            exit 1
+          fi
+          rm -rf project
+          mkdir -p project
+          unzip -q "$ZIP_FILE" -d project
+          mapfile -t SETTINGS_FILES < <(find project -type f -name 'settings.gradle.kts' -print)
+          PROJECT_DIR=""
+          for settings_file in "${SETTINGS_FILES[@]}"; do
+            candidate_dir="$(dirname "$settings_file")"
+            if [[ -f "$candidate_dir/build.gradle.kts" && -f "$candidate_dir/app/build.gradle.kts" && -f "$candidate_dir/app/src/main/AndroidManifest.xml" && -f "$candidate_dir/gradle.properties" ]]; then
+              if [[ -n "$PROJECT_DIR" ]]; then
+                echo "ERROR: More than one valid Android project root was found."
+                exit 1
+              fi
+              PROJECT_DIR="$candidate_dir"
+            fi
+          done
+          [[ -n "$PROJECT_DIR" ]] || { echo "ERROR: No valid Android project root was found."; exit 1; }
+          if [[ -e "$PROJECT_DIR/gradlew" || -e "$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties" ]]; then
+            echo "ERROR: Unexpected Gradle Wrapper found. This workflow intentionally uses installed Gradle 8.13."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project detected at: $PROJECT_DIR"
+
+      - name: Repair and lock V1.2.1 build configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_GRADLE="$PROJECT_DIR/app/build.gradle.kts"
+          ROOT_GRADLE="$PROJECT_DIR/build.gradle.kts"
+          python3 - "$APP_GRADLE" "$ROOT_GRADLE" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+          app_path = Path(sys.argv[1])
+          root_path = Path(sys.argv[2])
+          app = app_path.read_text(encoding="utf-8")
+          root = root_path.read_text(encoding="utf-8")
+          required_root = 'id("com.android.application") version "8.13.2" apply false'
+          if required_root not in root:
+              raise SystemExit("ERROR: V1.2.1 must use Android Gradle Plugin 8.13.2.")
+          for needle, message in [
+              ('compileSdk = 36', 'compileSdk 36 baseline'),
+              ('targetSdk = 36', 'targetSdk 36'),
+              ('minSdk = 24', 'minSdk 24'),
+              ('versionName = "1.2.1"', 'version 1.2.1'),
+              ('androidx.compose:compose-bom:2026.08.00', 'Compose BOM 2026.08.00'),
+              ('androidx.core:core-ktx:1.19.1', 'core-ktx 1.19.1'),
+              ('kotlinOptions {', 'legacy kotlinOptions block'),
+          ]:
+              if needle not in app:
+                  raise SystemExit(f"ERROR: Expected V1.2.1 source marker is missing: {message}")
+          app, count = re.subn(
+              r'(?m)^(?P<i>[ \t]*)compileSdk\s*=\s*36\s*$',
+              lambda m: m.group('i') + 'compileSdk {\n' + m.group('i') + '    version = release(36) {\n' + m.group('i') + '        minorApiLevel = 1\n' + m.group('i') + '    }\n' + m.group('i') + '}',
+              app,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f"ERROR: Expected exactly one compileSdk = 36 line; replaced {count}.")
+          kotlin_pattern = r"""(?ms)^[ \t]*kotlinOptions[ \t]*\{\s*jvmTarget\s*=\s*["']17["']\s*\}[ \t]*$"""
+          app, removed = re.subn(kotlin_pattern, '', app, count=1)
+          if removed != 1:
+              raise SystemExit(f"ERROR: Expected exactly one legacy kotlinOptions block; removed {removed}.")
+          app = app.replace('androidx.compose:compose-bom:2026.08.00', 'androidx.compose:compose-bom:2026.06.01', 1)
+          app = app.replace('androidx.core:core-ktx:1.19.1', 'androidx.core:core-ktx:1.18.0', 1)
+          if 'buildToolsVersion' not in app:
+              app = app.replace('android {', 'android {\n    buildToolsVersion = "36.1.0"', 1)
+          if 'jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)' not in app:
+              app = app.rstrip() + '\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'
+          app_path.write_text(app.rstrip() + '\n', encoding='utf-8')
+          checks = {
+              'API 36.1 compileSdk': 'minorApiLevel = 1' in app,
+              'targetSdk 36': 'targetSdk = 36' in app,
+              'minSdk 24': 'minSdk = 24' in app,
+              'Compose BOM 2026.06.01': 'androidx.compose:compose-bom:2026.06.01' in app,
+              'core-ktx 1.18.0': 'androidx.core:core-ktx:1.18.0' in app,
+              'Build Tools 36.1.0': 'buildToolsVersion = "36.1.0"' in app,
+              'modern Kotlin compilerOptions': 'jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)' in app,
+              'no legacy kotlinOptions': 'kotlinOptions' not in app,
+              'no Compose BOM 2026.08.00': 'androidx.compose:compose-bom:2026.08.00' not in app,
+              'no core-ktx 1.19.1': 'androidx.core:core-ktx:1.19.1' not in app,
+              'AGP 8.13.2': required_root in root,
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              raise SystemExit('ERROR: Build configuration invariant failed: ' + ', '.join(failed))
+          print('V1.2.1 build configuration repaired and locked successfully.')
+          PY
+
+      - name: Verify toolchain and project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          java -version
+          gradle --version
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+
+      - name: Preflight AAR metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --stacktrace :app:checkDebugAarMetadata
+
+      - name: Build Debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify and stage APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_FILE="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK_FILE"
+          test -s "$APK_FILE"
+          mkdir -p apk-output
+          cp "$APK_FILE" apk-output/BeitAlHadaya-v1.2.1-debug.apk
+          ls -lh apk-output/BeitAlHadaya-v1.2.1-debug.apk
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: BeitAlHadaya-v1.2.1-debug-apk
+          path: apk-output/BeitAlHadaya-v1.2.1-debug.apk
+          if-no-files-found: error
+          
