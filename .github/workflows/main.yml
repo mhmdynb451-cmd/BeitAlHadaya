@@ -34,17 +34,16 @@ jobs:
 
           test -f "$ZIP_FILE" || {
             echo "ERROR: $ZIP_FILE was not found in the repository root."
-            echo "Repository files:"
-            find . -maxdepth 2 -type f -printf '%p\n' | sort
+            find . -maxdepth 2 -type f -print | sort
             exit 1
           }
 
           unzip -tq "$ZIP_FILE"
 
-          echo "Source ZIP verified: $ZIP_FILE"
+          echo "Source ZIP verified:"
           ls -lh "$ZIP_FILE"
 
-      - name: Extract and locate V1.2.2 Android project
+      - name: Extract and locate Android project
         shell: bash
         run: |
           set -euo pipefail
@@ -71,8 +70,8 @@ jobs:
 
               if [[ -n "$PROJECT_DIR" ]]; then
                 echo "ERROR: More than one valid Android project root was found."
-                echo "Existing: $PROJECT_DIR"
-                echo "Another:  $candidate_dir"
+                echo "First:  $PROJECT_DIR"
+                echo "Second: $candidate_dir"
                 exit 1
               fi
 
@@ -82,7 +81,6 @@ jobs:
 
           [[ -n "$PROJECT_DIR" ]] || {
             echo "ERROR: No valid Android project root was found inside $ZIP_FILE."
-            echo "Extracted Gradle files:"
             find build-source -type f \
               \( -name 'settings.gradle.kts' -o -name 'build.gradle.kts' \) \
               -print | sort
@@ -94,19 +92,16 @@ jobs:
           echo "Detected Android project:"
           echo "$PROJECT_DIR"
 
-          echo "Top-level project files:"
-          find "$PROJECT_DIR" -maxdepth 2 -type f -print | sort
-
       - name: Setup Java 17
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
+      - name: Setup Android SDK 36.1
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+          packages: 'platform-tools platforms;android-36.1 build-tools;36.1.0'
 
       - name: Setup Gradle 8.13
         uses: gradle/actions/setup-gradle@v6
@@ -116,113 +111,220 @@ jobs:
           cache-disabled: true
           validate-wrappers: false
 
-      - name: Validate and normalize V1.2.2 build configuration
+      - name: Repair and lock V1.2.2 build configuration
         shell: bash
         run: |
           set -euo pipefail
 
-          python3 - "$PROJECT_DIR/build.gradle.kts" "$PROJECT_DIR/app/build.gradle.kts" <<'PY'
-          from pathlib import Path
+          APP_GRADLE="$PROJECT_DIR/app/build.gradle.kts"
+          ROOT_GRADLE="$PROJECT_DIR/build.gradle.kts"
+
+          python3 - "$APP_GRADLE" "$ROOT_GRADLE" <<'PY'
           import re
           import sys
+          from pathlib import Path
 
-          root_path = Path(sys.argv[1])
-          app_path = Path(sys.argv[2])
+          app_path = Path(sys.argv[1])
+          root_path = Path(sys.argv[2])
 
-          root = root_path.read_text(encoding="utf-8")
           app = app_path.read_text(encoding="utf-8")
+          root = root_path.read_text(encoding="utf-8")
 
-          required_root = {
-              "Android Gradle Plugin 8.13.2":
-                  r'id\("com\.android\.application"\)\s+version\s+"8\.13\.2"\s+apply\s+false',
+          required_root = [
+              (
+                  "Android Gradle Plugin 8.13.2",
+                  r'id\("com\.android\.application"\)\s+version\s+"8\.13\.2"\s+apply\s+false'
+              ),
+              (
+                  "Kotlin Android plugin 2.3.21",
+                  r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"2\.3\.21"\s+apply\s+false'
+              ),
+          ]
 
-              "Kotlin Android plugin 2.3.21":
-                  r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"2\.3\.21"\s+apply\s+false',
-          }
+          missing_root = [
+              name for name, pattern in required_root
+              if not re.search(pattern, root)
+          ]
 
-          required_app = {
-              "compileSdk 36":
-                  r'\bcompileSdk\s*=\s*36\b',
-
-              "targetSdk 36":
-                  r'\btargetSdk\s*=\s*36\b',
-
-              "versionCode 6":
-                  r'\bversionCode\s*=\s*6\b',
-
-              "versionName 1.2.2":
-                  r'\bversionName\s*=\s*"1\.2\.2"\b',
-
-              "Supabase BOM 3.8.0":
-                  r'io\.github\.jan-tennert\.supabase:bom:3\.8\.0',
-
-              "Ktor 3.6.0":
-                  r'io\.ktor:ktor-client-android:3\.6\.0',
-          }
-
-          missing = []
-
-          for label, pattern in required_root.items():
-              if not re.search(pattern, root):
-                  missing.append(label)
-
-          for label, pattern in required_app.items():
-              if not re.search(pattern, app):
-                  missing.append(label)
-
-          if missing:
+          if missing_root:
               raise SystemExit(
-                  "ERROR: V1.2.2 build configuration is missing: "
-                  + ", ".join(missing)
+                  "ERROR: Root build configuration is missing: "
+                  + ", ".join(missing_root)
               )
 
-          compose_bom_pattern = (
-              r'(androidx\.compose:compose-bom:)'
-              r'([0-9]{4}\.[0-9]{2}\.[0-9]{2})'
-          )
+          # Normalize version BEFORE validation.
+          lines = app.splitlines()
+          version_code_found = False
+          version_name_found = False
+          normalized_lines = []
 
-          match = re.search(compose_bom_pattern, app)
+          for line in lines:
+              if re.match(r'^\s*versionCode\s*(?:=\s*)?\d+\s*$', line):
+                  indent = re.match(r'^(\s*)', line).group(1)
+                  normalized_lines.append(indent + 'versionCode = 6')
+                  version_code_found = True
 
-          if not match:
+              elif re.match(
+                  r'^\s*versionName\s*(?:=\s*)?["\'].*["\']\s*$',
+                  line
+              ):
+                  indent = re.match(r'^(\s*)', line).group(1)
+                  normalized_lines.append(
+                      indent + 'versionName = "1.2.2"'
+                  )
+                  version_name_found = True
+
+              else:
+                  normalized_lines.append(line)
+
+          app = "\n".join(normalized_lines) + "\n"
+
+          if not version_code_found:
               raise SystemExit(
-                  "ERROR: No Jetpack Compose BOM was found "
+                  "ERROR: No versionCode assignment was found "
                   "in app/build.gradle.kts."
               )
 
-          current_bom = match.group(2)
-          safe_bom = "2026.06.01"
+          if not version_name_found:
+              raise SystemExit(
+                  "ERROR: No versionName assignment was found "
+                  "in app/build.gradle.kts."
+              )
 
-          if current_bom != safe_bom:
+          # Android SDK configuration.
+          if re.search(r'(?m)^\s*compileSdk\s*=\s*36\s*$', app):
               app = re.sub(
-                  compose_bom_pattern,
-                  rf'\g<1>{safe_bom}',
+                  r'(?m)^(?P<i>\s*)compileSdk\s*=\s*36\s*$',
+                  lambda m: (
+                      m.group('i') + 'compileSdk {\n'
+                      + m.group('i') + '    version = release(36) {\n'
+                      + m.group('i') + '        minorApiLevel = 1\n'
+                      + m.group('i') + '    }\n'
+                      + m.group('i') + '}'
+                  ),
                   app,
                   count=1
               )
 
-              app_path.write_text(
-                  app.rstrip() + "\n",
-                  encoding="utf-8"
-              )
-
-              print(
-                  f"Compose BOM normalized from "
-                  f"{current_bom} to {safe_bom}."
+          if 'buildToolsVersion' not in app:
+              app = app.replace(
+                  'android {',
+                  'android {\n    buildToolsVersion = "36.1.0"',
+                  1
               )
           else:
-              print(
-                  f"Compose BOM already pinned to {safe_bom}."
+              app = re.sub(
+                  r'(?m)^\s*buildToolsVersion\s*=\s*"[^"]+"\s*$',
+                  '    buildToolsVersion = "36.1.0"',
+                  app,
+                  count=1
               )
 
-          app_after = app_path.read_text(encoding="utf-8")
+          # Remove deprecated Kotlin jvmTarget block.
+          app = re.sub(
+              r'(?ms)^\s*kotlinOptions\s*\{.*?^\s*\}\s*',
+              '',
+              app,
+              count=1
+          )
 
-          if "androidx.compose:compose-bom:2026.06.01" not in app_after:
+          if (
+              'jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)'
+              not in app
+          ):
+              app = app.rstrip() + '''
+
+          kotlin {
+              compilerOptions {
+                  jvmTarget.set(
+                      org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+                  )
+              }
+          }
+          '''
+
+          # Dependency normalization.
+          app = re.sub(
+              r'(androidx\.compose:compose-bom:)\d{4}\.\d{2}\.\d{2}',
+              r'\g<1>2026.06.01',
+              app
+          )
+
+          app = re.sub(
+              r'(androidx\.core:core-ktx:)\d+\.\d+\.\d+',
+              r'\g<1>1.18.0',
+              app
+          )
+
+          app_path.write_text(
+              app.rstrip() + "\n",
+              encoding="utf-8"
+          )
+
+          # Final verification.
+          app = app_path.read_text(encoding="utf-8")
+
+          checks = {
+              "compileSdk API 36.1":
+                  "minorApiLevel = 1" in app
+                  and "version = release(36)" in app,
+
+              "targetSdk 36":
+                  re.search(r'\btargetSdk\s*=\s*36\b', app) is not None,
+
+              "minSdk 24":
+                  re.search(r'\bminSdk\s*=\s*24\b', app) is not None,
+
+              "versionCode 6":
+                  re.search(r'\bversionCode\s*=\s*6\b', app) is not None,
+
+              "versionName 1.2.2":
+                  'versionName = "1.2.2"' in app,
+
+              "Compose BOM 2026.06.01":
+                  'androidx.compose:compose-bom:2026.06.01' in app,
+
+              "core-ktx 1.18.0":
+                  'androidx.core:core-ktx:1.18.0' in app,
+
+              "Ktor 3.6.0":
+                  'io.ktor:ktor-client-android:3.6.0' in app,
+
+              "Supabase BOM 3.8.0":
+                  'io.github.jan-tennert.supabase:bom:3.8.0' in app,
+
+              "Build Tools 36.1.0":
+                  'buildToolsVersion = "36.1.0"' in app,
+
+              "modern Kotlin compilerOptions":
+                  'jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)'
+                  in app,
+
+              "no legacy kotlinOptions":
+                  'kotlinOptions' not in app,
+
+              "AGP 8.13.2":
+                  re.search(required_root[0][1], root) is not None,
+
+              "Kotlin 2.3.21":
+                  re.search(required_root[1][1], root) is not None,
+          }
+
+          failed = [
+              name for name, ok in checks.items()
+              if not ok
+          ]
+
+          if failed:
               raise SystemExit(
-                  "ERROR: Compose BOM was not normalized "
-                  "to 2026.06.01."
+                  "ERROR: Build configuration invariant failed: "
+                  + ", ".join(failed)
               )
 
-          print("V1.2.2 build configuration validation passed.")
+          print(
+              "V1.2.2 build configuration repaired "
+              "and locked successfully."
+          )
           PY
 
           if grep -RniE 'service_role|sb_secret_' "$PROJECT_DIR/app/src"; then
@@ -236,22 +338,26 @@ jobs:
               'android.useAndroidX=true' \
               > "$PROJECT_DIR/gradle.properties"
           else
-            grep -qxF 'android.useAndroidX=true' "$PROJECT_DIR/gradle.properties" || \
+            grep -qxF 'android.useAndroidX=true' \
+              "$PROJECT_DIR/gradle.properties" || \
               printf '\n%s\n' 'android.useAndroidX=true' \
               >> "$PROJECT_DIR/gradle.properties"
           fi
 
-      - name: Verify Gradle project
+      - name: Verify Android SDK and Gradle project
         shell: bash
         run: |
           set -euo pipefail
 
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+
+          test -n "$SDK_ROOT"
+          test -d "$SDK_ROOT/platforms/android-36.1"
+          test -d "$SDK_ROOT/build-tools/36.1.0"
+
           cd "$PROJECT_DIR"
 
-          echo "Java:"
           java -version
-
-          echo "Gradle:"
           gradle --version
 
           test -f settings.gradle.kts
@@ -259,7 +365,19 @@ jobs:
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
 
-          echo "Android project verification passed."
+          echo "Android SDK and Gradle project verification passed."
+
+      - name: Preflight AAR metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$PROJECT_DIR"
+
+          gradle \
+            --no-daemon \
+            --stacktrace \
+            :app:checkDebugAarMetadata
 
       - name: Build Debug APK
         shell: bash
@@ -274,22 +392,22 @@ jobs:
             --warning-mode all \
             :app:assembleDebug
 
-      - name: Verify APK
+      - name: Verify and stage APK
         shell: bash
         run: |
           set -euo pipefail
 
-          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          APK_FILE="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
-          test -f "$APK"
-          test -s "$APK"
+          test -f "$APK_FILE"
+          test -s "$APK_FILE"
 
           mkdir -p apk-output
 
-          cp "$APK" \
+          cp "$APK_FILE" \
             apk-output/BeitAlHadaya-v1.2.2-debug.apk
 
-          echo "APK:"
+          echo "APK generated successfully:"
           ls -lh apk-output/BeitAlHadaya-v1.2.2-debug.apk
 
           echo "SHA-256:"
