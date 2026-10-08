@@ -119,6 +119,9 @@ jobs:
           APP_GRADLE="$PROJECT_DIR/app/build.gradle.kts"
           ROOT_GRADLE="$PROJECT_DIR/build.gradle.kts"
 
+          test -f "$APP_GRADLE"
+          test -f "$ROOT_GRADLE"
+
           python3 - "$APP_GRADLE" "$ROOT_GRADLE" <<'PY'
           import re
           import sys
@@ -152,7 +155,10 @@ jobs:
                   + ", ".join(missing_root)
               )
 
-          # Normalize version BEFORE validation.
+          # ------------------------------------------------------------
+          # 1. Normalize versionCode / versionName
+          # ------------------------------------------------------------
+
           lines = app.splitlines()
           version_code_found = False
           version_name_found = False
@@ -191,7 +197,10 @@ jobs:
                   "in app/build.gradle.kts."
               )
 
-          # Android SDK configuration.
+          # ------------------------------------------------------------
+          # 2. Normalize Android SDK configuration
+          # ------------------------------------------------------------
+
           if re.search(r'(?m)^\s*compileSdk\s*=\s*36\s*$', app):
               app = re.sub(
                   r'(?m)^(?P<i>\s*)compileSdk\s*=\s*36\s*$',
@@ -220,7 +229,102 @@ jobs:
                   count=1
               )
 
-          # Remove deprecated Kotlin jvmTarget block.
+          # ------------------------------------------------------------
+          # 3. Ensure defaultConfig exists
+          # ------------------------------------------------------------
+
+          if not re.search(r'(?m)^\s*defaultConfig\s*\{', app):
+              app = app.replace(
+                  'android {',
+                  '''android {
+              defaultConfig {
+                  minSdk = 24
+                  targetSdk = 36
+                  versionCode = 6
+                  versionName = "1.2.2"
+              }''',
+                  1
+              )
+
+          # ------------------------------------------------------------
+          # 4. Ensure minSdk = 24
+          # ------------------------------------------------------------
+
+          min_sdk_pattern = r'(?m)^(\s*)minSdk\s*=\s*\d+\s*$'
+
+          if re.search(min_sdk_pattern, app):
+              app = re.sub(
+                  min_sdk_pattern,
+                  lambda m: m.group(1) + 'minSdk = 24',
+                  app,
+                  count=1
+              )
+          else:
+              default_match = re.search(
+                  r'(?m)^(\s*)defaultConfig\s*\{',
+                  app
+              )
+
+              if not default_match:
+                  raise SystemExit(
+                      "ERROR: defaultConfig block could not be found."
+                  )
+
+              indent = default_match.group(1)
+              child_indent = indent + "    "
+
+              insertion = (
+                  default_match.group(0)
+                  + "\n"
+                  + child_indent
+                  + "minSdk = 24"
+              )
+
+              app = app.replace(
+                  default_match.group(0),
+                  insertion,
+                  1
+              )
+
+          # ------------------------------------------------------------
+          # 5. Ensure targetSdk = 36
+          # ------------------------------------------------------------
+
+          target_sdk_pattern = r'(?m)^(\s*)targetSdk\s*=\s*\d+\s*$'
+
+          if re.search(target_sdk_pattern, app):
+              app = re.sub(
+                  target_sdk_pattern,
+                  lambda m: m.group(1) + 'targetSdk = 36',
+                  app,
+                  count=1
+              )
+          else:
+              default_match = re.search(
+                  r'(?m)^(\s*)defaultConfig\s*\{',
+                  app
+              )
+
+              if not default_match:
+                  raise SystemExit(
+                      "ERROR: defaultConfig block could not be found."
+                  )
+
+              child_indent = default_match.group(1) + "    "
+
+              app = app.replace(
+                  default_match.group(0),
+                  default_match.group(0)
+                  + "\n"
+                  + child_indent
+                  + "targetSdk = 36",
+                  1
+              )
+
+          # ------------------------------------------------------------
+          # 6. Remove deprecated kotlinOptions block
+          # ------------------------------------------------------------
+
           app = re.sub(
               r'(?ms)^\s*kotlinOptions\s*\{.*?^\s*\}\s*',
               '',
@@ -228,10 +332,17 @@ jobs:
               count=1
           )
 
-          if (
-              'jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)'
-              not in app
-          ):
+          # ------------------------------------------------------------
+          # 7. Add modern Kotlin compilerOptions
+          # ------------------------------------------------------------
+
+          compiler_marker = (
+              'jvmTarget.set('
+              'org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17'
+              ')'
+          )
+
+          if compiler_marker not in app:
               app = app.rstrip() + '''
 
           kotlin {
@@ -243,7 +354,10 @@ jobs:
           }
           '''
 
-          # Dependency normalization.
+          # ------------------------------------------------------------
+          # 8. Normalize dependencies
+          # ------------------------------------------------------------
+
           app = re.sub(
               r'(androidx\.compose:compose-bom:)\d{4}\.\d{2}\.\d{2}',
               r'\g<1>2026.06.01',
@@ -261,7 +375,10 @@ jobs:
               encoding="utf-8"
           )
 
-          # Final verification.
+          # ------------------------------------------------------------
+          # 9. Final strict verification
+          # ------------------------------------------------------------
+
           app = app_path.read_text(encoding="utf-8")
 
           checks = {
@@ -297,8 +414,7 @@ jobs:
                   'buildToolsVersion = "36.1.0"' in app,
 
               "modern Kotlin compilerOptions":
-                  'jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)'
-                  in app,
+                  compiler_marker in app,
 
               "no legacy kotlinOptions":
                   'kotlinOptions' not in app,
@@ -327,10 +443,18 @@ jobs:
           )
           PY
 
+          # ------------------------------------------------------------
+          # 10. Security check
+          # ------------------------------------------------------------
+
           if grep -RniE 'service_role|sb_secret_' "$PROJECT_DIR/app/src"; then
             echo "ERROR: Secret/service-role credential detected in Android source."
             exit 1
           fi
+
+          # ------------------------------------------------------------
+          # 11. AndroidX configuration
+          # ------------------------------------------------------------
 
           if [[ ! -f "$PROJECT_DIR/gradle.properties" ]]; then
             printf '%s\n' \
