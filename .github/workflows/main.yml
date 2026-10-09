@@ -103,6 +103,7 @@ jobs:
           ROOT_GRADLE="$PROJECT_DIR/build.gradle.kts"
           test -f "$APP_GRADLE"
           test -f "$ROOT_GRADLE"
+
           python3 - "$APP_GRADLE" "$ROOT_GRADLE" <<'PY'
           import re
           import sys
@@ -123,6 +124,7 @@ jobs:
                   r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"2\.3\.21"\s+apply\s+false'
               ),
           ]
+
           missing_root = [
               name for name, pattern in required_root
               if not re.search(pattern, root)
@@ -138,6 +140,7 @@ jobs:
           version_code_found = False
           version_name_found = False
           normalized_lines = []
+
           for line in lines:
               if re.match(r'^\s*versionCode\s*(?:=\s*)?\d+\s*$', line):
                   indent = re.match(r'^(\s*)', line).group(1)
@@ -152,12 +155,15 @@ jobs:
                   version_name_found = True
               else:
                   normalized_lines.append(line)
+
           app = "\n".join(normalized_lines) + "\n"
+
           if not version_code_found:
               raise SystemExit(
                   "ERROR: No versionCode assignment was found "
                   "in app/build.gradle.kts."
               )
+
           if not version_name_found:
               raise SystemExit(
                   "ERROR: No versionName assignment was found "
@@ -178,6 +184,7 @@ jobs:
                   app,
                   count=1
               )
+
           if 'buildToolsVersion' not in app:
               app = app.replace(
                   'android {',
@@ -216,13 +223,18 @@ jobs:
                   count=1
               )
           else:
-              default_match = re.search(r'(?m)^(\s*)defaultConfig\s*\{', app)
+              default_match = re.search(
+                  r'(?m)^(\s*)defaultConfig\s*\{', app
+              )
               if not default_match:
-                  raise SystemExit("ERROR: defaultConfig block could not be found.")
+                  raise SystemExit(
+                      "ERROR: defaultConfig block could not be found."
+                  )
               indent = default_match.group(1)
               child_indent = indent + "    "
               insertion = (
-                  default_match.group(0) + "\n" + child_indent + "minSdk = 24"
+                  default_match.group(0) + "\n"
+                  + child_indent + "minSdk = 24"
               )
               app = app.replace(default_match.group(0), insertion, 1)
 
@@ -236,13 +248,18 @@ jobs:
                   count=1
               )
           else:
-              default_match = re.search(r'(?m)^(\s*)defaultConfig\s*\{', app)
+              default_match = re.search(
+                  r'(?m)^(\s*)defaultConfig\s*\{', app
+              )
               if not default_match:
-                  raise SystemExit("ERROR: defaultConfig block could not be found.")
+                  raise SystemExit(
+                      "ERROR: defaultConfig block could not be found."
+                  )
               child_indent = default_match.group(1) + "    "
               app = app.replace(
                   default_match.group(0),
-                  default_match.group(0) + "\n" + child_indent + "targetSdk = 36",
+                  default_match.group(0)
+                  + "\n" + child_indent + "targetSdk = 36",
                   1
               )
 
@@ -260,6 +277,7 @@ jobs:
               r'org\.jetbrains\.kotlin\.gradle\.dsl\.JvmTarget\.JVM_17'
               r'\s*\)'
           )
+
           if not compiler_pattern.search(app):
               app = app.rstrip() + '''
 
@@ -283,7 +301,10 @@ jobs:
               r'\g<1>1.18.0',
               app
           )
-          app_path.write_text(app.rstrip() + "\n", encoding="utf-8")
+
+          app_path.write_text(
+              app.rstrip() + "\n", encoding="utf-8"
+          )
 
           # 9. Final strict verification
           app = app_path.read_text(encoding="utf-8")
@@ -297,7 +318,8 @@ jobs:
                   re.search(r'\bminSdk\s*=\s*24\b', app) is not None,
               "versionCode 6":
                   re.search(r'\bversionCode\s*=\s*6\b', app) is not None,
-              "versionName 1.2.2": 'versionName = "1.2.2"' in app,
+              "versionName 1.2.2":
+                  'versionName = "1.2.2"' in app,
               "Compose BOM 2026.06.01":
                   'androidx.compose:compose-bom:2026.06.01' in app,
               "core-ktx 1.18.0":
@@ -310,24 +332,102 @@ jobs:
                   'buildToolsVersion = "36.1.0"' in app,
               "modern Kotlin compilerOptions":
                   compiler_pattern.search(app) is not None,
-              "no legacy kotlinOptions": 'kotlinOptions' not in app,
-              "AGP 8.13.2": re.search(required_root[0][1], root) is not None,
-              "Kotlin 2.3.21": re.search(required_root[1][1], root) is not None,
+              "no legacy kotlinOptions":
+                  'kotlinOptions' not in app,
+              "AGP 8.13.2":
+                  re.search(required_root[0][1], root) is not None,
+              "Kotlin 2.3.21":
+                  re.search(required_root[1][1], root) is not None,
           }
+
           failed = [name for name, ok in checks.items() if not ok]
           if failed:
               raise SystemExit(
                   "ERROR: Build configuration invariant failed: "
                   + ", ".join(failed)
               )
-          print("V1.2.2 build configuration repaired and locked successfully.")
+
+          print(
+              "V1.2.2 build configuration repaired and locked successfully."
+          )
           PY
 
           # 10. Security check
-          if grep -RniE 'service_role|sb_secret_' "$PROJECT_DIR/app/src"; then
-            echo "ERROR: Secret/service-role credential detected in Android source."
-            exit 1
-          fi
+          # Ignore plain mentions in comments; detect actual secret formats.
+          python3 - "$PROJECT_DIR/app/src" <<'PY'
+          import base64
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          source_root = Path(sys.argv[1])
+          if not source_root.is_dir():
+              raise SystemExit(
+                  "ERROR: Android source directory was not found."
+              )
+
+          extensions = {
+              ".kt", ".kts", ".java", ".xml",
+              ".properties", ".json", ".gradle"
+          }
+
+          secret_pattern = re.compile(
+              r'\bsb_secret_[A-Za-z0-9_-]+\b'
+          )
+          jwt_pattern = re.compile(
+              r'\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b'
+          )
+
+          findings = []
+
+          for path in source_root.rglob("*"):
+              if not path.is_file():
+                  continue
+              if path.suffix.lower() not in extensions:
+                  continue
+
+              source = path.read_text(
+                  encoding="utf-8", errors="ignore"
+              )
+
+              if secret_pattern.search(source):
+                  findings.append(
+                      (path, "Supabase secret-key pattern detected")
+                  )
+
+              for token in jwt_pattern.findall(source):
+                  try:
+                      payload = token.split(".")[1]
+                      payload += "=" * (-len(payload) % 4)
+                      claims = json.loads(
+                          base64.urlsafe_b64decode(payload).decode("utf-8")
+                      )
+                      if claims.get("role") == "service_role":
+                          findings.append(
+                              (path, "Service-role JWT detected")
+                          )
+                          break
+                  except (
+                      ValueError,
+                      UnicodeDecodeError,
+                      json.JSONDecodeError
+                  ):
+                      continue
+
+          if findings:
+              for path, reason in findings:
+                  print(f"ERROR: {reason} in {path}")
+              raise SystemExit(
+                  "Security check failed. Remove exposed credentials "
+                  "from Android source."
+              )
+
+          print(
+              "Security check passed: no Supabase secret-key pattern "
+              "or service-role JWT detected."
+          )
+          PY
 
           # 11. AndroidX configuration
           if [[ ! -f "$PROJECT_DIR/gradle.properties" ]]; then
