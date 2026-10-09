@@ -29,17 +29,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           ZIP_FILE="BeitAlHadaya_v1.2.2_GitHubBuild.zip"
-
           test -f "$ZIP_FILE" || {
             echo "ERROR: $ZIP_FILE was not found in the repository root."
             find . -maxdepth 2 -type f -print | sort
             exit 1
           }
-
           unzip -tq "$ZIP_FILE"
-
           echo "Source ZIP verified:"
           ls -lh "$ZIP_FILE"
 
@@ -47,38 +43,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           ZIP_FILE="BeitAlHadaya_v1.2.2_GitHubBuild.zip"
-
           rm -rf build-source
           mkdir -p build-source
-
           unzip -q "$ZIP_FILE" -d build-source
-
           mapfile -t SETTINGS_FILES < <(
             find build-source -type f -name 'settings.gradle.kts' -print | sort
           )
-
           PROJECT_DIR=""
-
           for settings_file in "${SETTINGS_FILES[@]}"; do
             candidate_dir="$(dirname "$settings_file")"
-
             if [[ -f "$candidate_dir/build.gradle.kts" &&
                   -f "$candidate_dir/app/build.gradle.kts" &&
                   -f "$candidate_dir/app/src/main/AndroidManifest.xml" ]]; then
-
               if [[ -n "$PROJECT_DIR" ]]; then
                 echo "ERROR: More than one valid Android project root was found."
                 echo "First:  $PROJECT_DIR"
                 echo "Second: $candidate_dir"
                 exit 1
               fi
-
               PROJECT_DIR="$candidate_dir"
             fi
           done
-
           [[ -n "$PROJECT_DIR" ]] || {
             echo "ERROR: No valid Android project root was found inside $ZIP_FILE."
             find build-source -type f \
@@ -86,9 +72,7 @@ jobs:
               -print | sort
             exit 1
           }
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
           echo "Detected Android project:"
           echo "$PROJECT_DIR"
 
@@ -115,13 +99,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           APP_GRADLE="$PROJECT_DIR/app/build.gradle.kts"
           ROOT_GRADLE="$PROJECT_DIR/build.gradle.kts"
-
           test -f "$APP_GRADLE"
           test -f "$ROOT_GRADLE"
-
           python3 - "$APP_GRADLE" "$ROOT_GRADLE" <<'PY'
           import re
           import sys
@@ -129,7 +110,6 @@ jobs:
 
           app_path = Path(sys.argv[1])
           root_path = Path(sys.argv[2])
-
           app = app_path.read_text(encoding="utf-8")
           root = root_path.read_text(encoding="utf-8")
 
@@ -143,64 +123,48 @@ jobs:
                   r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"2\.3\.21"\s+apply\s+false'
               ),
           ]
-
           missing_root = [
               name for name, pattern in required_root
               if not re.search(pattern, root)
           ]
-
           if missing_root:
               raise SystemExit(
                   "ERROR: Root build configuration is missing: "
                   + ", ".join(missing_root)
               )
 
-          # ------------------------------------------------------------
           # 1. Normalize versionCode / versionName
-          # ------------------------------------------------------------
-
           lines = app.splitlines()
           version_code_found = False
           version_name_found = False
           normalized_lines = []
-
           for line in lines:
               if re.match(r'^\s*versionCode\s*(?:=\s*)?\d+\s*$', line):
                   indent = re.match(r'^(\s*)', line).group(1)
                   normalized_lines.append(indent + 'versionCode = 6')
                   version_code_found = True
-
               elif re.match(
                   r'^\s*versionName\s*(?:=\s*)?["\'].*["\']\s*$',
                   line
               ):
                   indent = re.match(r'^(\s*)', line).group(1)
-                  normalized_lines.append(
-                      indent + 'versionName = "1.2.2"'
-                  )
+                  normalized_lines.append(indent + 'versionName = "1.2.2"')
                   version_name_found = True
-
               else:
                   normalized_lines.append(line)
-
           app = "\n".join(normalized_lines) + "\n"
-
           if not version_code_found:
               raise SystemExit(
                   "ERROR: No versionCode assignment was found "
                   "in app/build.gradle.kts."
               )
-
           if not version_name_found:
               raise SystemExit(
                   "ERROR: No versionName assignment was found "
                   "in app/build.gradle.kts."
               )
 
-          # ------------------------------------------------------------
           # 2. Normalize Android SDK configuration
-          # ------------------------------------------------------------
-
           if re.search(r'(?m)^\s*compileSdk\s*=\s*36\s*$', app):
               app = re.sub(
                   r'(?m)^(?P<i>\s*)compileSdk\s*=\s*36\s*$',
@@ -214,7 +178,6 @@ jobs:
                   app,
                   count=1
               )
-
           if 'buildToolsVersion' not in app:
               app = app.replace(
                   'android {',
@@ -229,10 +192,7 @@ jobs:
                   count=1
               )
 
-          # ------------------------------------------------------------
           # 3. Ensure defaultConfig exists
-          # ------------------------------------------------------------
-
           if not re.search(r'(?m)^\s*defaultConfig\s*\{', app):
               app = app.replace(
                   'android {',
@@ -246,12 +206,8 @@ jobs:
                   1
               )
 
-          # ------------------------------------------------------------
           # 4. Ensure minSdk = 24
-          # ------------------------------------------------------------
-
           min_sdk_pattern = r'(?m)^(\s*)minSdk\s*=\s*\d+\s*$'
-
           if re.search(min_sdk_pattern, app):
               app = re.sub(
                   min_sdk_pattern,
@@ -260,38 +216,18 @@ jobs:
                   count=1
               )
           else:
-              default_match = re.search(
-                  r'(?m)^(\s*)defaultConfig\s*\{',
-                  app
-              )
-
+              default_match = re.search(r'(?m)^(\s*)defaultConfig\s*\{', app)
               if not default_match:
-                  raise SystemExit(
-                      "ERROR: defaultConfig block could not be found."
-                  )
-
+                  raise SystemExit("ERROR: defaultConfig block could not be found.")
               indent = default_match.group(1)
               child_indent = indent + "    "
-
               insertion = (
-                  default_match.group(0)
-                  + "\n"
-                  + child_indent
-                  + "minSdk = 24"
+                  default_match.group(0) + "\n" + child_indent + "minSdk = 24"
               )
+              app = app.replace(default_match.group(0), insertion, 1)
 
-              app = app.replace(
-                  default_match.group(0),
-                  insertion,
-                  1
-              )
-
-          # ------------------------------------------------------------
           # 5. Ensure targetSdk = 36
-          # ------------------------------------------------------------
-
           target_sdk_pattern = r'(?m)^(\s*)targetSdk\s*=\s*\d+\s*$'
-
           if re.search(target_sdk_pattern, app):
               app = re.sub(
                   target_sdk_pattern,
@@ -300,31 +236,17 @@ jobs:
                   count=1
               )
           else:
-              default_match = re.search(
-                  r'(?m)^(\s*)defaultConfig\s*\{',
-                  app
-              )
-
+              default_match = re.search(r'(?m)^(\s*)defaultConfig\s*\{', app)
               if not default_match:
-                  raise SystemExit(
-                      "ERROR: defaultConfig block could not be found."
-                  )
-
+                  raise SystemExit("ERROR: defaultConfig block could not be found.")
               child_indent = default_match.group(1) + "    "
-
               app = app.replace(
                   default_match.group(0),
-                  default_match.group(0)
-                  + "\n"
-                  + child_indent
-                  + "targetSdk = 36",
+                  default_match.group(0) + "\n" + child_indent + "targetSdk = 36",
                   1
               )
 
-          # ------------------------------------------------------------
           # 6. Remove deprecated kotlinOptions block
-          # ------------------------------------------------------------
-
           app = re.sub(
               r'(?ms)^\s*kotlinOptions\s*\{.*?^\s*\}\s*',
               '',
@@ -332,17 +254,13 @@ jobs:
               count=1
           )
 
-          # ------------------------------------------------------------
           # 7. Add modern Kotlin compilerOptions
-          # ------------------------------------------------------------
-
-          compiler_marker = (
-              'jvmTarget.set('
-              'org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17'
-              ')'
+          compiler_pattern = re.compile(
+              r'jvmTarget\.set\(\s*'
+              r'org\.jetbrains\.kotlin\.gradle\.dsl\.JvmTarget\.JVM_17'
+              r'\s*\)'
           )
-
-          if compiler_marker not in app:
+          if not compiler_pattern.search(app):
               app = app.rstrip() + '''
 
           kotlin {
@@ -354,108 +272,64 @@ jobs:
           }
           '''
 
-          # ------------------------------------------------------------
           # 8. Normalize dependencies
-          # ------------------------------------------------------------
-
           app = re.sub(
               r'(androidx\.compose:compose-bom:)\d{4}\.\d{2}\.\d{2}',
               r'\g<1>2026.06.01',
               app
           )
-
           app = re.sub(
               r'(androidx\.core:core-ktx:)\d+\.\d+\.\d+',
               r'\g<1>1.18.0',
               app
           )
+          app_path.write_text(app.rstrip() + "\n", encoding="utf-8")
 
-          app_path.write_text(
-              app.rstrip() + "\n",
-              encoding="utf-8"
-          )
-
-          # ------------------------------------------------------------
           # 9. Final strict verification
-          # ------------------------------------------------------------
-
           app = app_path.read_text(encoding="utf-8")
-
           checks = {
               "compileSdk API 36.1":
                   "minorApiLevel = 1" in app
                   and "version = release(36)" in app,
-
               "targetSdk 36":
                   re.search(r'\btargetSdk\s*=\s*36\b', app) is not None,
-
               "minSdk 24":
                   re.search(r'\bminSdk\s*=\s*24\b', app) is not None,
-
               "versionCode 6":
                   re.search(r'\bversionCode\s*=\s*6\b', app) is not None,
-
-              "versionName 1.2.2":
-                  'versionName = "1.2.2"' in app,
-
+              "versionName 1.2.2": 'versionName = "1.2.2"' in app,
               "Compose BOM 2026.06.01":
                   'androidx.compose:compose-bom:2026.06.01' in app,
-
               "core-ktx 1.18.0":
                   'androidx.core:core-ktx:1.18.0' in app,
-
               "Ktor 3.6.0":
                   'io.ktor:ktor-client-android:3.6.0' in app,
-
               "Supabase BOM 3.8.0":
                   'io.github.jan-tennert.supabase:bom:3.8.0' in app,
-
               "Build Tools 36.1.0":
                   'buildToolsVersion = "36.1.0"' in app,
-
               "modern Kotlin compilerOptions":
-                  compiler_marker in app,
-
-              "no legacy kotlinOptions":
-                  'kotlinOptions' not in app,
-
-              "AGP 8.13.2":
-                  re.search(required_root[0][1], root) is not None,
-
-              "Kotlin 2.3.21":
-                  re.search(required_root[1][1], root) is not None,
+                  compiler_pattern.search(app) is not None,
+              "no legacy kotlinOptions": 'kotlinOptions' not in app,
+              "AGP 8.13.2": re.search(required_root[0][1], root) is not None,
+              "Kotlin 2.3.21": re.search(required_root[1][1], root) is not None,
           }
-
-          failed = [
-              name for name, ok in checks.items()
-              if not ok
-          ]
-
+          failed = [name for name, ok in checks.items() if not ok]
           if failed:
               raise SystemExit(
                   "ERROR: Build configuration invariant failed: "
                   + ", ".join(failed)
               )
-
-          print(
-              "V1.2.2 build configuration repaired "
-              "and locked successfully."
-          )
+          print("V1.2.2 build configuration repaired and locked successfully.")
           PY
 
-          # ------------------------------------------------------------
           # 10. Security check
-          # ------------------------------------------------------------
-
           if grep -RniE 'service_role|sb_secret_' "$PROJECT_DIR/app/src"; then
             echo "ERROR: Secret/service-role credential detected in Android source."
             exit 1
           fi
 
-          # ------------------------------------------------------------
           # 11. AndroidX configuration
-          # ------------------------------------------------------------
-
           if [[ ! -f "$PROJECT_DIR/gradle.properties" ]]; then
             printf '%s\n' \
               'org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8' \
@@ -472,32 +346,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-
           test -n "$SDK_ROOT"
           test -d "$SDK_ROOT/platforms/android-36.1"
           test -d "$SDK_ROOT/build-tools/36.1.0"
-
           cd "$PROJECT_DIR"
-
           java -version
           gradle --version
-
           test -f settings.gradle.kts
           test -f build.gradle.kts
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
-
           echo "Android SDK and Gradle project verification passed."
 
       - name: Preflight AAR metadata
         shell: bash
         run: |
           set -euo pipefail
-
           cd "$PROJECT_DIR"
-
           gradle \
             --no-daemon \
             --stacktrace \
@@ -507,9 +373,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           cd "$PROJECT_DIR"
-
           gradle \
             --no-daemon \
             --stacktrace \
@@ -520,20 +384,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           APK_FILE="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-
           test -f "$APK_FILE"
           test -s "$APK_FILE"
-
           mkdir -p apk-output
-
-          cp "$APK_FILE" \
-            apk-output/BeitAlHadaya-v1.2.2-debug.apk
-
+          cp "$APK_FILE" apk-output/BeitAlHadaya-v1.2.2-debug.apk
           echo "APK generated successfully:"
           ls -lh apk-output/BeitAlHadaya-v1.2.2-debug.apk
-
           echo "SHA-256:"
           sha256sum apk-output/BeitAlHadaya-v1.2.2-debug.apk
 
@@ -544,3 +401,4 @@ jobs:
           path: apk-output/BeitAlHadaya-v1.2.2-debug.apk
           if-no-files-found: error
           retention-days: 7
+          
