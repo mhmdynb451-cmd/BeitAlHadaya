@@ -6,18 +6,19 @@ import { C, shadow } from '../theme';
 import { useApp } from '../context/AppContext';
 
 const TABS = [
-  { key: 'Home', label: 'الرئيسية', icon: 'home-outline' },
-  { key: 'Categories', label: 'الأقسام', icon: 'grid-outline' },
-  { key: 'Cart', label: 'السلة', icon: 'bag-handle-outline' },
-  { key: 'Orders', label: 'طلباتي', icon: 'receipt-outline' },
-  { key: 'Support', label: 'الدعم', icon: 'chatbubbles-outline' },
+  { key: 'Home', label: 'الرئيسية', icon: 'home-outline', path: '/home' },
+  { key: 'Categories', label: 'الأقسام', icon: 'grid-outline', path: '/categories' },
+  { key: 'Cart', label: 'السلة', icon: 'bag-handle-outline', path: '/cart' },
+  { key: 'Orders', label: 'طلباتي', icon: 'receipt-outline', path: '/orders' },
+  { key: 'Support', label: 'الدعم', icon: 'chatbubbles-outline', path: '/support' },
+  { key: 'Admin', label: 'الإدارة', icon: 'settings-outline', path: '/admin' },
 ];
 
 export default function TabBar({ state, navigation }) {
-  const { cartCount, isAdmin } = useApp();
+  const { cartCount } = useApp();
   const insets = useSafeAreaInsets();
 
-  const tabs = TABS.concat([{ key: 'Admin', label: 'الإدارة', icon: 'settings-outline' }]);
+  const tabs = TABS;
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }, shadow(2)]}>

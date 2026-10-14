@@ -15,6 +15,7 @@ export function AppProvider({ children }) {
   const [regions, setRegions] = useState([]);
   const [settings, setSettings] = useState({ vodafoneNumber: '' });
   const [users, setUsers] = useState([]);
+  const allUsers = users;
   const [allOrders, setAllOrders] = useState([]);
   const [cart, setCart] = useState([]);
   const [toast, setToastState] = useState(null);
@@ -181,6 +182,7 @@ export function AppProvider({ children }) {
     addToCart, setQty, removeFromCart, placeOrder,
     adminSaveProduct, adminTrashProduct, adminRestoreProduct, adminPurgeProduct,
     adminSaveCategory, adminDeleteCategory, adminSaveRegions,
+    adminSaveUser, adminDeleteUser, adminLoadOrders, adminUpdateOrderStatus, users: allUsers,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
