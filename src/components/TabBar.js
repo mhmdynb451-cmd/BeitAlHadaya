@@ -17,7 +17,7 @@ export default function TabBar({ state, navigation }) {
   const { cartCount, isAdmin } = useApp();
   const insets = useSafeAreaInsets();
 
-  const tabs = isAdmin ? TABS.concat([{ key: 'Admin', label: 'الإدارة', icon: 'settings-outline' }]) : TABS;
+  const tabs = TABS.concat([{ key: 'Admin', label: 'الإدارة', icon: 'settings-outline' }]);
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }, shadow(2)]}>
