@@ -42,10 +42,18 @@ export function AppProvider({ children }) {
   const signIn = useCallback(async (email, password) => {
     const u = await api.signIn(email, password);
     setUser(u);
-    setIsAdmin(u.role === 'admin' || email.startsWith('admin@'));
+    setIsAdmin(u.role === 'admin' || u.role === 'super_admin' || email.startsWith('admin@'));
     showToast('تم تسجيل الدخول بنجاح', 'success');
     return u;
   }, [showToast]);
+
+  // فحص صلاحية: المسؤول الرئيسي لديه كل شيء، والبقية حسب ما وزّعه المسؤول
+  const hasPerm = useCallback((perm) => {
+    if (!user) return false;
+    if (can(user, perm)) return true;
+    // في الوضع السحابي دور المستخدم غير معروف من REST — نحافظ على وصول الآدمن القديم
+    return isCloud && (user.role === 'admin' || (user.email || '').startsWith('admin@'));
+  }, [user]);
 
   const signUp = useCallback(async (email, password) => {
     const u = await api.signUp(email, password);

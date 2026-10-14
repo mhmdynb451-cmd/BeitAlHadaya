@@ -75,6 +75,22 @@ insert into carriers (id, name, "baseFee", "perKgFee", "minFee", active) values
   ('cr3', 'بوسطة إكسبرس', 55, 10, 55, true)
 on conflict (id) do nothing;
 
+-- Users & roles (admin dashboard). Passwords stored for demo REST mode only —
+-- in production use Supabase Auth and drop this column.
+create table if not exists app_users (
+  id text primary key,
+  email text not null unique,
+  password text,
+  role text not null default 'customer',
+  permissions jsonb not null default '[]'::jsonb,
+  "createdAt" timestamptz default now()
+);
+
+alter table app_users enable row level security;
+
+drop policy if exists anon_all on app_users;
+create policy anon_all on app_users for all to anon using (true) with check (true);
+
 -- Demo-grade anon access for the REST client.
 -- Tighten with auth.uid() policies before production.
 alter table categories enable row level security;

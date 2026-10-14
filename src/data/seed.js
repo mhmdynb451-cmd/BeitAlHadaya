@@ -42,11 +42,11 @@ export const seedRegions = [
 
 export const seedSettings = { vodafoneNumber: '0101 234 5678', storeName: 'بيت الهدايا - غاوي خسارة' };
 
-// حساب الآدمن الرئيسي — صلاحيات كاملة
+// حساب المسؤول الرئيسي — صلاحيات كاملة غير قابلة للتعديل أو الحذف
 export const ADMIN_EMAIL = 'mhmder936@gmail.com';
 export const ADMIN_PASSWORD = 'Admin@2024';
 export const seedUsers = [
-  { id: 'u-admin', email: ADMIN_EMAIL, password: ADMIN_PASSWORD, role: 'admin' },
+  { id: 'u-admin', email: ADMIN_EMAIL, password: ADMIN_PASSWORD, role: 'super_admin', permissions: ['products', 'categories', 'orders', 'users', 'reports', 'shipping'] },
 ];
 
 export function buildSeed() {

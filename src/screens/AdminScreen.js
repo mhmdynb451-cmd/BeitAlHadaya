@@ -51,6 +51,31 @@ export default function AdminScreen({ navigation }) {
     setCatSheet(false);
   };
 
+  const openUser = (u = null) => {
+    setEditingUser(u);
+    setUEmail(u ? u.email : '');
+    setUPass('');
+    setURole(u && u.role !== 'super_admin' ? u.role : 'staff');
+    setUPerms(u ? [...(u.permissions || [])] : []);
+    setUserSheet(true);
+  };
+
+  const togglePerm = (key) => setUPerms((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]));
+
+  const saveUser = async () => {
+    if (!uEmail.trim()) return;
+    if (!editingUser && uPass.length < 6) {
+      Alert.alert('كلمة المرور', 'أدخل كلمة مرور من 6 أحرف على الأقل');
+      return;
+    }
+    try {
+      await adminSaveUser({ ...(editingUser || {}), email: uEmail.trim(), role: uRole, permissions: uPerms, ...(uPass ? { password: uPass } : {}) });
+      setUserSheet(false);
+    } catch (e) {
+      Alert.alert('تعذر الحفظ', e.message || 'حدث خطأ غير متوقع');
+    }
+  };
+
   const mainCats = categories.filter((c) => !c.parent);
   const trashed = products.filter((p) => p.deleted);
 
@@ -76,12 +101,7 @@ export default function AdminScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.tabs}>
-        {[
-          { k: 'products', label: 'المنتجات', icon: 'cube-outline' },
-          { k: 'cats', label: 'الأقسام', icon: 'grid-outline' },
-          { k: 'trash', label: 'المهملة (' + trashed.length + ')', icon: 'trash-outline' },
-          { k: 'shipping', label: 'الشحن', icon: 'car-outline' },
-        ].map((t) => (
+        {tabs.map((t) => (
           <TouchableOpacity key={t.k} onPress={() => setTab(t.k)} style={[styles.tab, tab === t.k && styles.tabOn]} activeOpacity={0.8}>
             <Ionicons name={t.icon} size={16} color={tab === t.k ? '#fff' : C.muted} />
             <Text style={[styles.tabTxt, tab === t.k && { color: '#fff' }]}>{t.label}</Text>
@@ -168,6 +188,82 @@ export default function AdminScreen({ navigation }) {
           </View>
         )}
 
+        {tab === 'orders' && (
+          <View>
+            {(allOrders || []).map((o) => (
+              <TouchableOpacity key={o.id} style={[styles.row, { marginBottom: 10 }]} onPress={() => setOrderSheet(o)} activeOpacity={0.85}>
+                <View style={[styles.rowIcon, { backgroundColor: C.goldSoft }]}><Ionicons name="receipt-outline" size={20} color={C.goldDark} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={styles.rowName}>{o.customerName} — {o.phone}</Text>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <Text style={styles.rowPrice}>{fmt(o.total)}</Text>
+                    <Badge text={o.status} tone={statusTone(o.status)} />
+                  </View>
+                </View>
+                <Ionicons name="chevron-back" size={18} color={C.muted} />
+              </TouchableOpacity>
+            ))}
+            {(!allOrders || allOrders.length === 0) && <Empty icon="receipt-outline" title="لا توجد طلبات بعد" sub="طلبات العملاء ستظهر هنا فور وصولها" />}
+          </View>
+        )}
+
+        {tab === 'users' && (
+          <View>
+            <Btn title="إضافة مستخدم وصلاحيات" icon="add" onPress={() => openUser()} style={{ marginBottom: 16 }} />
+            {users.map((u) => (
+              <View key={u.id} style={[styles.row, { marginBottom: 10 }]}>
+                <View style={[styles.rowIcon, { backgroundColor: C.goldSoft }]}><Ionicons name="person-outline" size={20} color={C.goldDark} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={styles.rowName}>{u.email}</Text>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <Badge text={ROLE_LABELS[u.role] || u.role} tone={u.role === 'super_admin' ? 'gold' : 'green'} />
+                    {u.role !== 'super_admin' && <Text style={styles.permCount}>{(u.permissions || []).length + ' صلاحية'}</Text>}
+                  </View>
+                </View>
+                {u.role === 'super_admin' ? (
+                  <Badge text="محمي" tone="gold" />
+                ) : (
+                  <>
+                    <TouchableOpacity onPress={() => openUser(u)} style={styles.rowBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="create-outline" size={19} color={C.goldDark} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => Alert.alert('حذف المستخدم', 'حذف «' + u.email + '» نهائيًا؟', [
+                        { text: 'إلغاء', style: 'cancel' },
+                        { text: 'حذف', style: 'destructive', onPress: () => adminDeleteUser(u.id) },
+                      ])}
+                      style={styles.rowBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={19} color={C.danger} />
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            ))}
+            {users.length === 0 && <Empty icon="people-outline" title="لا يوجد مستخدمون" sub="أضف مستخدمين ووزّع صلاحياتهم حسب الحاجة" />}
+          </View>
+        )}
+
+        {tab === 'reports' && (
+          <View>
+            <View style={styles.statGrid}>
+              <View style={styles.statBox}><Text style={styles.statNum}>{liveProducts.length}</Text><Text style={styles.statLbl}>منتج معروض</Text></View>
+              <View style={styles.statBox}><Text style={styles.statNum}>{categories.length}</Text><Text style={styles.statLbl}>قسم</Text></View>
+              <View style={styles.statBox}><Text style={styles.statNum}>{(allOrders || []).length}</Text><Text style={styles.statLbl}>إجمالي الطلبات</Text></View>
+              <View style={styles.statBox}><Text style={styles.statNum}>{fmt((allOrders || []).filter((o) => o.status !== 'ملغي').reduce((s, o) => s + (o.total || 0), 0))}</Text><Text style={styles.statLbl}>إجمالي المبيعات</Text></View>
+            </View>
+            <Text style={[styles.fLabel, { marginTop: 18 }]}>الأكثر مبيعًا</Text>
+            {[...liveProducts].sort((a, b) => (b.sold || 0) - (a.sold || 0)).slice(0, 5).map((p, i) => (
+              <View key={p.id} style={[styles.row, { marginBottom: 10 }]}>
+                <View style={[styles.rowIcon, { backgroundColor: C.goldSoft, width: 38, height: 38 }]}><Text style={{ fontWeight: '800', color: C.goldDark }}>{i + 1}</Text></View>
+                <Text numberOfLines={1} style={[styles.rowName, { flex: 1 }]}>{p.name}</Text>
+                <Text style={styles.rowPrice}>{p.sold || 0} مبيع</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {tab === 'shipping' && regionDraft && (
           <View>
             <Text style={styles.shipHint}>حدد رسوم الشحن لكل منطقة — العميل يدفع رسوم منطقته مقدمًا لتأكيد الأوردر.</Text>
@@ -249,4 +345,16 @@ const styles = StyleSheet.create({
   vfBox: { backgroundColor: C.surface, borderRadius: R.md, padding: 14, marginTop: 16, borderWidth: 1, borderColor: C.line },
   vfLbl: { fontSize: 12, color: C.muted, fontWeight: '600', textAlign: 'right' },
   vfVal: { fontSize: 15, fontWeight: '800', color: C.ink, marginTop: 4, textAlign: 'right' },
+  permGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  permChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: R.pill, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
+  permChipOn: { backgroundColor: C.gold, borderColor: C.gold },
+  permChipTxt: { fontSize: 12, fontWeight: '700', color: C.ink },
+  permCount: { fontSize: 11, color: C.muted, fontWeight: '600' },
+  statusOpt: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: R.md, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface, marginBottom: 8 },
+  statusOptOn: { backgroundColor: C.slate, borderColor: C.slate },
+  statusOptTxt: { fontSize: 13, fontWeight: '700', color: C.ink, textAlign: 'right' },
+  statGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
+  statBox: { flexBasis: '48%', flexGrow: 1, backgroundColor: C.surface, borderRadius: R.md, padding: 14, borderWidth: 1, borderColor: C.line, alignItems: 'center' },
+  statNum: { fontSize: 20, fontWeight: '800', color: C.goldDark },
+  statLbl: { fontSize: 11, color: C.muted, fontWeight: '600', marginTop: 4 },
 });

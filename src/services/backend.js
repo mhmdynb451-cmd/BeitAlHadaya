@@ -122,7 +122,7 @@ export const api = {
     const db = demoDb();
     const user = db.users.find((u) => u.email === email && u.password === password);
     if (!user) throw new Error('بيانات الدخول غير صحيحة');
-    return { id: user.id, email, role: user.role || 'customer' };
+    return { id: user.id, email, role: user.role || 'customer', permissions: user.permissions || [] };
   },
 
   async saveCategory(cat) {
