@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { api, isCloud, uid } from '../services/backend';
+import { can } from '../services/permissions';
 
 const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
@@ -13,6 +14,8 @@ export function AppProvider({ children }) {
   const [orders, setOrders] = useState([]);
   const [regions, setRegions] = useState([]);
   const [settings, setSettings] = useState({ vodafoneNumber: '' });
+  const [users, setUsers] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
   const [cart, setCart] = useState([]);
   const [toast, setToastState] = useState(null);
   const toastTimer = useRef(null);
@@ -134,6 +137,34 @@ export function AppProvider({ children }) {
     const saved = await api.saveRegions(list);
     setRegions(saved);
     showToast('تم حفظ مناطق الشحن', 'success');
+  }, [showToast]);
+
+  // Admin: users & roles
+  const refreshUsers = useCallback(async () => {
+    try { setUsers(await api.listUsers()); } catch {}
+  }, []);
+
+  const adminSaveUser = useCallback(async (u) => {
+    await api.saveUser(u);
+    await refreshUsers();
+    showToast('تم حفظ المستخدم', 'success');
+  }, [refreshUsers, showToast]);
+
+  const adminDeleteUser = useCallback(async (id) => {
+    await api.deleteUser(id);
+    await refreshUsers();
+    showToast('تم حذف المستخدم');
+  }, [refreshUsers, showToast]);
+
+  // Admin: all orders
+  const adminLoadOrders = useCallback(async () => {
+    try { setAllOrders(await api.listAllOrders()); } catch {}
+  }, []);
+
+  const adminUpdateOrderStatus = useCallback(async (id, status) => {
+    await api.updateOrderStatus(id, status);
+    setAllOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+    showToast('تم تحديث حالة الطلب', 'success');
   }, [showToast]);
 
   const liveProducts = products.filter((p) => !p.deleted);

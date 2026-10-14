@@ -4,7 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { C, R, shadow, fmt } from '../theme';
 import { useApp } from '../context/AppContext';
-import { Btn, Badge, Empty, Sheet } from '../components/ui';
+import { Btn, Badge, Empty, Sheet, Input } from '../components/ui';
+import { MODULES, ROLE_LABELS, ASSIGNABLE_ROLES, ORDER_STATUSES, statusTone } from '../services/permissions';
 
 const ICONS = ['gift-outline', 'flash-outline', 'shirt-outline', 'restaurant-outline', 'home-outline', 'bed-outline', 'cafe-outline', 'sparkles-outline', 'wine-outline', 'flower-outline', 'bag-handle-outline', 'bow-outline', 'albums-outline', 'egg-outline'];
 const TINTS = ['#C9A24B', '#D98E8E', '#5E8C61', '#8A7BA8', '#B07D4F', '#C0564F'];
