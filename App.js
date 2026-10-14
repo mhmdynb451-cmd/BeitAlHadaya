@@ -6,22 +6,22 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { I18nManager } from 'react-native';
-import { C } from './theme';
-import { AppProvider, useApp } from './context/AppContext';
-import TabBar from './components/TabBar';
-import Toast from './components/Toast';
+import { C } from './src/theme';
+import { AppProvider, useApp } from './src/context/AppContext';
+import TabBar from './src/components/TabBar';
+import Toast from './src/components/Toast';
 
-import HomeScreen from './screens/HomeScreen';
-import CategoryScreen from './screens/CategoryScreen';
-import ProductScreen from './screens/ProductScreen';
-import CartScreen from './screens/CartScreen';
-import CheckoutScreen from './screens/CheckoutScreen';
-import OrderSuccessScreen from './screens/OrderSuccessScreen';
-import OrdersScreen from './screens/OrdersScreen';
-import SupportScreen from './screens/SupportScreen';
-import AuthScreen from './screens/AuthScreen';
-import AdminScreen from './screens/AdminScreen';
-import ProductFormScreen from './screens/ProductFormScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import CategoryScreen from './src/screens/CategoryScreen';
+import ProductScreen from './src/screens/ProductScreen';
+import CartScreen from './src/screens/CartScreen';
+import CheckoutScreen from './src/screens/CheckoutScreen';
+import OrderSuccessScreen from './src/screens/OrderSuccessScreen';
+import OrdersScreen from './src/screens/OrdersScreen';
+import SupportScreen from './src/screens/SupportScreen';
+import AuthScreen from './src/screens/AuthScreen';
+import AdminScreen from './src/screens/AdminScreen';
+import ProductFormScreen from './src/screens/ProductFormScreen';
 
 I18nManager.allowRTL(true);
 
