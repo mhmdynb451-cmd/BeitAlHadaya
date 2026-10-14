@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "journeys": [
+    {
+      "name": "browse-and-add-to-cart",
+      "path": "/",
+      "viewport": { "width": 412, "height": 915 },
+      "steps": [
+        { "type": "wait", "duration_ms": 1500 },
+        { "type": "assert", "selector": "[data-testid=home]", "state": "visible" },
+        { "type": "screenshot", "checkpoint": "home-rtl" }
+      ]
+    },
+    {
+      "name": "ai-support-bundle",
+      "path": "/",
+      "viewport": { "width": 412, "height": 915 },
+      "steps": [
+        { "type": "wait", "duration_ms": 1200 },
+        { "type": "screenshot", "checkpoint": "support-entry" }
+      ]
+    }
+  ]
+}
