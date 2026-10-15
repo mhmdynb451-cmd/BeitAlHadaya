@@ -20,8 +20,16 @@ export default function AdminScreen({ navigation }) {
   const [cIcon, setCIcon] = React.useState(ICONS[0]);
   const [cTint, setCTint] = React.useState(TINTS[0]);
   const [regionDraft, setRegionDraft] = React.useState(null);
+  const [editingUser, setEditingUser] = React.useState(null);
+  const [userSheet, setUserSheet] = React.useState(false);
+  const [uEmail, setUEmail] = React.useState('');
+  const [uPass, setUPass] = React.useState('');
+  const [uRole, setURole] = React.useState('staff');
+  const [uPerms, setUPerms] = React.useState([]);
+  const [orderSheet, setOrderSheet] = React.useState(null);
 
   React.useEffect(() => { setRegionDraft(JSON.parse(JSON.stringify(regions))); }, [regions]);
+  React.useEffect(() => { if (isAdmin) adminLoadOrders(); }, [isAdmin, adminLoadOrders]);
 
   if (!isAdmin) {
     return (

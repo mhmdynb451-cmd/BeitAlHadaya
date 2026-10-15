@@ -182,7 +182,7 @@ export function AppProvider({ children }) {
     addToCart, setQty, removeFromCart, placeOrder,
     adminSaveProduct, adminTrashProduct, adminRestoreProduct, adminPurgeProduct,
     adminSaveCategory, adminDeleteCategory, adminSaveRegions,
-    adminSaveUser, adminDeleteUser, adminLoadOrders, adminUpdateOrderStatus, users: allUsers,
+    adminSaveUser, adminDeleteUser, adminLoadOrders, adminUpdateOrderStatus, users: allUsers, allOrders,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
